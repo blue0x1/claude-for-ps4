@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Conversation state shared by the UI thread and the network thread.
 #pragma once
 #include <pthread.h>
@@ -52,6 +52,8 @@ typedef struct {
 
     // Tool confirmation, asked by the network thread, answered by the UI.
     volatile int    confirm;
+    volatile int    confirm_by;          // who answered: 0 TV, 1 phone, 2 automatic (trusted mode)
+    volatile int    auto_approve;        // set while a tool runs whose confirm may be skipped
     char            confirm_text[1024];
     char            confirm_title[64];   // "" = "Allow this action?"
     char            confirm_yes[24];     // "" = "Allow"

@@ -1,3 +1,4 @@
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Renders the UI on a PC to PNG files for a quick visual check.
 #include <stdio.h>
 #include <stdlib.h>
@@ -143,6 +144,15 @@ int main(int argc, char **argv)
     render(&c, 0);
     snprintf(path, sizeof(path), "%s/preview-setup.png", outdir);
     save(&c, path);
+    // About popup
+    g_setup.shown = 0;
+    g_cfg_ok = 1;
+    chat_clear(&g_chat);
+    g_about = 1;
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-about.png", outdir);
+    save(&c, path);
+    g_about = 0;
     printf("ok\n");
     return 0;
 }

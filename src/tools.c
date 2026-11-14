@@ -1,5 +1,13 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #include "tools.h"
+#include "homefolders.h"
+#include "actions.h"
+#include "storage.h"
+#include "saves.h"
+#include "pcinstall.h"
+#include "goldhen.h"
+#include "health.h"
+#include "prefs.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -25,7 +33,7 @@ const char TOOLS_JSON[] =
 "{\"name\":\"make_directory\",\"description\":\"Create a folder (and missing parents). The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}},"
 "{\"name\":\"copy_path\",\"description\":\"Copy a file or a whole folder, for example to back up saves to USB. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\"},\"destination\":{\"type\":\"string\"}},\"required\":[\"source\",\"destination\"]}},"
 "{\"name\":\"move_path\",\"description\":\"Move or rename a file or folder. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\"},\"destination\":{\"type\":\"string\"}},\"required\":[\"source\",\"destination\"]}},"
-"{\"name\":\"delete_path\",\"description\":\"Delete a file, or a folder with everything in it when recursive is true. The user must confirm on screen. System folders are refused.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"recursive\":{\"type\":\"boolean\"}},\"required\":[\"path\"]}},"
+"{\"name\":\"delete_path\",\"description\":\"Delete a file, or a folder with everything in it when recursive is true. It goes to the trash (restore_from_trash undoes it, empty_trash frees the space) unless permanent is true. The user must confirm on screen. System folders are refused.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"recursive\":{\"type\":\"boolean\"},\"permanent\":{\"type\":\"boolean\"}},\"required\":[\"path\"]}},"
 "{\"name\":\"find_pkg_files\",\"description\":\"Find .pkg files on USB drives and in /data. Read-only.\",\"input_schema\":{\"type\":\"object\",\"properties\":{}}},"
 "{\"name\":\"list_installed_apps\",\"description\":\"List installed games and apps with title IDs and names. Read-only.\",\"input_schema\":{\"type\":\"object\",\"properties\":{}}},"
 "{\"name\":\"launch_app\",\"description\":\"Launch an installed game or app by title ID (for example CUSA00001). This closes Claude for PS4. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"title_id\":{\"type\":\"string\"}},\"required\":[\"title_id\"]}},"
@@ -35,7 +43,15 @@ const char TOOLS_JSON[] =
 "{\"name\":\"list_screenshots\",\"description\":\"List the newest screenshots the user took (SHARE button), newest first. Read-only.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}},"
 "{\"name\":\"view_image\",\"description\":\"Look at a JPEG or PNG image on the PS4, for example a screenshot from list_screenshots, to answer questions about it. Use path latest for the newest screenshot.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}},"
 "{\"name\":\"send_payload\",\"description\":\"Run a payload .bin file through GoldHEN BinLoader (port 9090), for example a Linux loader. Payloads run with kernel access, so only use files the user named. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}},"
-"{\"name\":\"show_notification\",\"description\":\"Show a short system notification pop-up on the PS4.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}}"
+"{\"name\":\"show_notification\",\"description\":\"Show a short system notification pop-up on the PS4.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}},"
+HOME_TOOLS_JSON ","
+ACTIONS_TOOLS_JSON ","
+STORAGE_TOOLS_JSON ","
+SAVES_TOOLS_JSON ","
+PCINSTALL_TOOLS_JSON ","
+GOLDHEN_TOOLS_JSON ","
+HEALTH_TOOLS_JSON ","
+PREFS_TOOLS_JSON
 "]";
 
 static const char *in_str(const JVal *input, const char *key)
@@ -57,7 +73,11 @@ static int fail(StrBuf *out, const char *fmt, const char *arg)
 
 static int fail_errno(StrBuf *out, const char *what, const char *path)
 {
-    sb_appendf(out, "%s failed for %s: %s", what, path, strerror(errno));
+    int err = errno;
+    sb_appendf(out, "%s failed for %s: %s", what, path, plat_strerror(err));
+    // In the sandbox most of the PS4 file system looks missing.
+    if (!plat_jailbroken() && (err == ENOENT || err == EACCES || err == EPERM))
+        sb_appendf(out, " (The app is still in its sandbox, full file access: %s)", plat_jailbreak_status());
     return 1;
 }
 
@@ -94,7 +114,7 @@ static int protected_path(const char *p)
     return 0;
 }
 
-static void human_size(unsigned long long b, char *out, size_t n)
+void tools_human_size(unsigned long long b, char *out, size_t n)
 {
     const char *u[] = { "B", "KB", "MB", "GB", "TB" };
     double v = (double)b;
@@ -141,7 +161,7 @@ static int copy_file(const char *src, const char *dst, StrBuf *out)
     return err;
 }
 
-static int copy_tree(const char *src, const char *dst, StrBuf *out, int *files)
+int tools_copy_tree(const char *src, const char *dst, StrBuf *out, int *files)
 {
     struct stat st;
     if (stat(src, &st) < 0)
@@ -165,16 +185,16 @@ static int copy_tree(const char *src, const char *dst, StrBuf *out, int *files)
         char s2[1024], d2[1024];
         snprintf(s2, sizeof(s2), "%s/%s", src, e->d_name);
         snprintf(d2, sizeof(d2), "%s/%s", dst, e->d_name);
-        err = copy_tree(s2, d2, out, files);
+        err = tools_copy_tree(s2, d2, out, files);
     }
     closedir(d);
     return err;
 }
 
-static int delete_tree(const char *path, StrBuf *out, int *count)
+int tools_delete_tree(const char *path, StrBuf *out, int *count)
 {
     struct stat st;
-    if (lstat(path, &st) < 0)
+    if (plat_lstat(path, &st) < 0)
         return fail_errno(out, "stat", path);
     if (S_ISDIR(st.st_mode)) {
         DIR *d = opendir(path);
@@ -187,7 +207,7 @@ static int delete_tree(const char *path, StrBuf *out, int *count)
                 continue;
             char p2[1024];
             snprintf(p2, sizeof(p2), "%s/%s", path, e->d_name);
-            err = delete_tree(p2, out, count);
+            err = tools_delete_tree(p2, out, count);
         }
         closedir(d);
         if (err)
@@ -473,7 +493,7 @@ static int t_list_directory(const JVal *in, StrBuf *out)
             sb_appendf(out, "[dir]  %s\n", e->d_name);
         } else if (stat(full, &st) == 0) {
             char sz[32];
-            human_size((unsigned long long)st.st_size, sz, sizeof(sz));
+            tools_human_size((unsigned long long)st.st_size, sz, sizeof(sz));
             sb_appendf(out, "[file] %s (%s)\n", e->d_name, sz);
         } else {
             sb_appendf(out, "[?]    %s\n", e->d_name);
@@ -537,7 +557,7 @@ static int t_write_text_file(Chat *chat, const JVal *in, StrBuf *out)
     if (strlen(content) > MAX_WRITE_BYTES)
         return fail(out, "content too large", NULL);
     char sz[32];
-    human_size(strlen(content), sz, sizeof(sz));
+    tools_human_size(strlen(content), sz, sizeof(sz));
     if (!confirm(chat, append ? "Append %s of text to\n%s ?" : "Write %s of text to\n%s ?", sz, path))
         return fail(out, "The user declined.", NULL);
     FILE *f = fopen(path, append ? "ab" : "wb");
@@ -591,11 +611,11 @@ static int t_copy_move(Chat *chat, const JVal *in, StrBuf *out, int move)
         return 0;
     }
     int files = 0;
-    if (copy_tree(src, dst, out, &files))
+    if (tools_copy_tree(src, dst, out, &files))
         return 1;
     if (move) {
         int count = 0;
-        if (delete_tree(src, out, &count))
+        if (tools_delete_tree(src, out, &count))
             return 1;
         sb_appendf(out, "Moved %s to %s (%d files copied, source removed)", src, dst, files);
     } else {
@@ -613,9 +633,23 @@ static int t_delete_path(Chat *chat, const JVal *in, StrBuf *out)
     if (protected_path(path))
         return fail(out, "refused: %s is a protected location", path);
     struct stat st;
-    if (lstat(path, &st) < 0)
+    if (plat_lstat(path, &st) < 0)
         return fail_errno(out, "stat", path);
     int dir = S_ISDIR(st.st_mode);
+    int permanent = in_bool(in, "permanent") || in_trash(path);
+    if (!permanent && (!dir || recursive)) {
+        char sz[32];
+        tools_human_size(tree_size(path), sz, sizeof(sz));
+        if (!confirm(chat, dir ? "Move this folder to the trash?\n%s\n(%s, can be restored)"
+                               : "Move this file to the trash?\n%s\n(%s, can be restored)", path, sz))
+            return fail(out, "The user declined.", NULL);
+        char id[40];
+        if (trash_put(path, id, sizeof(id), out))
+            return 1;
+        sb_appendf(out, "Moved %s (%s) to the trash as %s. restore_from_trash puts it back; empty_trash frees the space.",
+                   path, sz, id);
+        return 0;
+    }
     if (dir && !recursive) {
         if (!confirm(chat, "Delete empty folder\n%s ?%s", path, ""))
             return fail(out, "The user declined.", NULL);
@@ -624,13 +658,98 @@ static int t_delete_path(Chat *chat, const JVal *in, StrBuf *out)
         sb_appendf(out, "Deleted %s", path);
         return 0;
     }
-    if (!confirm(chat, dir ? "Delete folder and EVERYTHING in it\n%s ?%s" : "Delete file\n%s ?%s", path, ""))
+    if (!confirm(chat, dir ? "PERMANENTLY delete folder and EVERYTHING in it\n%s ?%s" : "PERMANENTLY delete file\n%s ?%s", path, ""))
         return fail(out, "The user declined.", NULL);
     int count = 0;
-    if (delete_tree(path, out, &count))
+    if (tools_delete_tree(path, out, &count))
         return 1;
     sb_appendf(out, "Deleted %s (%d items)", path, count);
     return 0;
+}
+
+// Several deletes behind one confirm (cleanups from storage_report).
+static int game_content_path(const char *p)
+{
+    static const char *const r[] = { "/user/app/", "/user/patch/", "/user/addcont/", NULL };
+    for (int i = 0; r[i]; i++)
+        if (!strncmp(p, r[i], strlen(r[i])) && !strchr(p + strlen(r[i]), '/'))
+            return 1;
+    return 0;
+}
+
+static int t_delete_paths(Chat *chat, const JVal *in, StrBuf *out)
+{
+    JVal *arr = json_get(in, "paths");
+    if (!arr || arr->type != J_ARR || arr->count == 0)
+        return fail(out, "paths must be a non-empty list", NULL);
+    if (arr->count > 50)
+        return fail(out, "at most 50 paths at once", NULL);
+    int permanent = in_bool(in, "permanent");
+    StrBuf q;
+    sb_init(&q);
+    unsigned long long total = 0;
+    for (int i = 0; i < arr->count; i++) {
+        JVal *v = arr->items[i];
+        const char *p = v && v->type == J_STR ? v->str : NULL;
+        struct stat st;
+        if (bad_path(p)) {
+            sb_free(&q);
+            return fail(out, "every path must be absolute", NULL);
+        }
+        if (protected_path(p) || game_content_path(p)) {
+            sb_free(&q);
+            return fail(out, "refused: %s is protected (uninstall games with uninstall_app)", p);
+        }
+        if (plat_lstat(p, &st) < 0) {
+            sb_free(&q);
+            return fail_errno(out, "stat", p);
+        }
+        unsigned long long sz = tree_size(p);
+        total += sz;
+        if (i < 8) {
+            char hs[32];
+            tools_human_size(sz, hs, sizeof(hs));
+            sb_appendf(&q, "%s (%s)\n", p, hs);
+        }
+    }
+    if (arr->count > 8)
+        sb_appendf(&q, "... and %d more\n", arr->count - 8);
+    char hs[32];
+    tools_human_size(total, hs, sizeof(hs));
+    char head[160];
+    snprintf(head, sizeof(head), permanent ? "PERMANENTLY delete %d items, %s in total?\n" : "Move %d items (%s) to the trash?\n",
+             arr->count, hs);
+    StrBuf full;
+    sb_init(&full);
+    sb_append(&full, head);
+    sb_append(&full, q.data ? q.data : "");
+    sb_free(&q);
+    int ok = chat_ask_confirm(chat, full.data);
+    sb_free(&full);
+    if (!ok)
+        return fail(out, "The user declined.", NULL);
+    int errors = 0;
+    for (int i = 0; i < arr->count; i++) {
+        const char *p = arr->items[i]->str;
+        StrBuf e;
+        sb_init(&e);
+        int r;
+        if (permanent || in_trash(p)) {
+            int count = 0;
+            r = tools_delete_tree(p, &e, &count);
+        } else {
+            char id[40];
+            r = trash_put(p, id, sizeof(id), &e);
+            if (!r)
+                sb_appendf(&e, "trash id %s", id);
+        }
+        sb_appendf(out, "%s %s: %s\n", r ? "FAILED" : "ok", p, e.data && e.data[0] ? e.data : "deleted");
+        errors += r != 0;
+        sb_free(&e);
+    }
+    sb_appendf(out, "%d of %d done, %s%s.", arr->count - errors, arr->count, hs,
+               permanent ? " freed" : " in the trash (empty_trash frees it)");
+    return errors ? 1 : 0;
 }
 
 static void find_pkgs(const char *dir, int depth, StrBuf *out, int *found)
@@ -655,7 +774,7 @@ static void find_pkgs(const char *dir, int depth, StrBuf *out, int *found)
             size_t n = strlen(e->d_name);
             if (n > 4 && !strcasecmp(e->d_name + n - 4, ".pkg")) {
                 char sz[32];
-                human_size((unsigned long long)st.st_size, sz, sizeof(sz));
+                tools_human_size((unsigned long long)st.st_size, sz, sizeof(sz));
                 sb_appendf(out, "%s (%s)\n", p, sz);
                 (*found)++;
             }
@@ -675,6 +794,21 @@ static int t_find_pkg_files(StrBuf *out)
     return 0;
 }
 
+int tools_app_sfo(const char *title_id, const char *key, char *out, size_t outlen)
+{
+    static const char *const metas[] = { "/system_data/priv/appmeta/%s/param.sfo", "/user/appmeta/%s/param.sfo",
+                                         "/user/app/%s/sce_sys/param.sfo", NULL };
+    char sfo[256];
+    out[0] = 0;
+    for (int i = 0; metas[i] && !out[0]; i++) {
+        snprintf(sfo, sizeof(sfo), metas[i], title_id);
+        sfo_get_string(sfo, key, out, outlen);
+    }
+    return out[0] != 0;
+}
+
+int tools_app_title(const char *title_id, char *out, size_t outlen) { return tools_app_sfo(title_id, "TITLE", out, outlen); }
+
 static int t_list_installed_apps(StrBuf *out)
 {
     DIR *d = opendir("/user/app");
@@ -685,14 +819,8 @@ static int t_list_installed_apps(StrBuf *out)
     while ((e = readdir(d))) {
         if (e->d_name[0] == '.' || strlen(e->d_name) != 9)
             continue;
-        char title[256] = "", sfo[256];
-        static const char *const metas[] = { "/system_data/priv/appmeta/%s/param.sfo",
-                                             "/user/appmeta/%s/param.sfo",
-                                             "/user/app/%s/sce_sys/param.sfo", NULL };
-        for (int i = 0; metas[i] && !title[0]; i++) {
-            snprintf(sfo, sizeof(sfo), metas[i], e->d_name);
-            sfo_get_string(sfo, "TITLE", title, sizeof(title));
-        }
+        char title[256];
+        tools_app_title(e->d_name, title, sizeof(title));
         sb_appendf(out, "%s  %s\n", e->d_name, title[0] ? title : "(name not readable)");
         n++;
     }
@@ -702,8 +830,79 @@ static int t_list_installed_apps(StrBuf *out)
     return 0;
 }
 
+static int tools_run_inner(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf *images);
+
+// 1 if a delete_path/delete_paths call only moves things to the trash.
+static int trash_delete_undoable(const JVal *in)
+{
+    if (in_bool(in, "permanent"))
+        return 0;
+    const char *p = in_str(in, "path");
+    if (p) {
+        struct stat st;
+        if (in_trash(p) || plat_lstat(p, &st) < 0)
+            return 0;
+        // A folder without recursive is an rmdir (permanent, so it asks).
+        return !S_ISDIR(st.st_mode) || in_bool(in, "recursive");
+    }
+    JVal *arr = json_get(in, "paths");
+    if (!arr || arr->type != J_ARR)
+        return 0;
+    for (int i = 0; i < arr->count; i++)
+        if (arr->items[i]->type != J_STR || in_trash(arr->items[i]->str))
+            return 0;
+    return 1;
+}
+
 int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf *images)
 {
+    chat->confirm_by = -1;
+    int auto_ok = 0;
+    if (prefs_check(name, tool_is_read_only(name), &auto_ok, out)) {
+        history_add(chat, name, "blocked by the permission mode", 1, out->data);
+        return 1;
+    }
+    // Deletes skip the confirm only when they can be undone from the trash.
+    if (auto_ok && (!strcmp(name, "delete_path") || !strcmp(name, "delete_paths")))
+        auto_ok = trash_delete_undoable(in);
+    chat->auto_approve = auto_ok;
+    int r = tools_run_inner(chat, name, in, out, images);
+    chat->auto_approve = 0;
+    if (!tool_is_read_only(name)) {
+        char what[300];
+        tools_describe(name, in, what, sizeof(what));
+        const char *sp = strstr(what, "  ");
+        history_add(chat, name, sp ? sp + 2 : "", r, out->data);
+    }
+    return r;
+}
+
+static int tools_run_inner(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf *images)
+{
+    // GoldHEN may not have been ready at start; try again before each tool.
+    if (!plat_jailbroken())
+        plat_jailbreak();
+    int home = home_tool_run(chat, name, in, out);
+    if (home >= 0)
+        return home;
+    int act = actions_tool_run(chat, name, in, out);
+    if (act >= 0)
+        return act;
+    int sv = saves_tool_run(chat, name, in, out);
+    if (sv >= 0)
+        return sv;
+    int pc = pcinstall_tool_run(chat, name, in, out);
+    if (pc >= 0)
+        return pc;
+    int gh = goldhen_tool_run(chat, name, in, out);
+    if (gh >= 0)
+        return gh;
+    int hl = health_tool_run(chat, name, in, out);
+    if (hl >= 0)
+        return hl;
+    int pf = prefs_tool_run(chat, name, in, out);
+    if (pf >= 0)
+        return pf;
     if (!strcmp(name, "list_screenshots"))
         return t_list_screenshots(in, out);
     if (!strcmp(name, "view_image"))
@@ -718,7 +917,7 @@ int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf 
         if (!pkg_read_info(path, cid, &type, &size))
             return fail(out, "%s is not a PS4 package (bad header)", path);
         char q[1200], sz[32];
-        human_size(size, sz, sizeof(sz));
+        tools_human_size(size, sz, sizeof(sz));
         snprintf(q, sizeof(q), "Install package\n%s\n%s, %s, %s ?", path, cid, type, sz);
         if (!chat_ask_confirm(chat, q))
             return fail(out, "The user declined.", NULL);
@@ -754,7 +953,7 @@ int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf 
         if (stat(path, &st) < 0)
             return fail_errno(out, "stat", path);
         char q[1200], sz[32];
-        human_size((unsigned long long)st.st_size, sz, sizeof(sz));
+        tools_human_size((unsigned long long)st.st_size, sz, sizeof(sz));
         snprintf(q, sizeof(q), "Run payload\n%s (%s) ?\nPayloads get full system access. Only run files you trust.", path, sz);
         if (!chat_ask_confirm(chat, q))
             return fail(out, "The user declined.", NULL);
@@ -778,6 +977,10 @@ int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf 
         return t_copy_move(chat, in, out, 1);
     if (!strcmp(name, "delete_path"))
         return t_delete_path(chat, in, out);
+    if (!strcmp(name, "delete_paths"))
+        return t_delete_paths(chat, in, out);
+    if (!strcmp(name, "storage_report"))
+        return storage_report(out);
     if (!strcmp(name, "find_pkg_files"))
         return t_find_pkg_files(out);
     if (!strcmp(name, "list_installed_apps"))
@@ -807,5 +1010,11 @@ void tools_describe(const char *name, const JVal *in, char *out, int outlen)
     const char *a = in_str(in, "path");
     if (!a) a = in_str(in, "source");
     if (!a) a = in_str(in, "title_id");
+    if (!a) a = in_str(in, "name");
+    if (!a) a = in_str(in, "folder");
+    if (!a) a = in_str(in, "backup");
+    if (!a) a = in_str(in, "plugin");
+    if (!a) a = in_str(in, "key");
+    if (!a) a = in_str(in, "profile");
     snprintf(out, (size_t)outlen, "Tool: %s%s%s", name, a ? "  " : "", a ? a : "");
 }

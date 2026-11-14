@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #include "net.h"
 #include "stream.h"
 #include "tools.h"
@@ -102,9 +102,10 @@ static int stream_call(Job *job, Stream *st, char **message_json, int may_retry)
         snprintf(url, sizeof(url), "%s/v1/messages", job->cfg.bridge_url);
     else
         snprintf(url, sizeof(url), "%s", API_URL);
-    // Console tools run on the PS4 and need the API directly; the bridge
-    // mode is chat only.
-    chat_build_request(chat, &job->cfg, bridge ? NULL : TOOLS_JSON, &body);
+    // Console tools always run here on the PS4. In bridge mode the bridge
+    // offers them to Claude Code and relays each call back as tool_use (an
+    // older bridge ignores the list and just chats).
+    chat_build_request(chat, &job->cfg, TOOLS_JSON, &body);
 
     tpl = sceHttpCreateTemplate(g_http_ctx, USER_AGENT, ORBIS_HTTP_VERSION_1_1, 1);
     if (tpl < 0) {
@@ -112,7 +113,8 @@ static int stream_call(Job *job, Stream *st, char **message_json, int may_retry)
         goto out;
     }
     sceHttpSetConnectTimeOut(tpl, 30 * 1000 * 1000);
-    if (!job->cfg.tls_verify) {
+    // The PC bridge's --https uses a self-signed certificate.
+    if (!job->cfg.tls_verify || job->cfg.bridge) {
         sceHttpsDisableOption(tpl, HTTPS_FLAG_SERVER_VERIFY | HTTPS_FLAG_CN_CHECK |
                                    HTTPS_FLAG_NOT_AFTER_CHECK | HTTPS_FLAG_NOT_BEFORE_CHECK |
                                    HTTPS_FLAG_KNOWN_CA_CHECK);
@@ -398,21 +400,26 @@ void net_cancel(Chat *chat)
 
 // ---- PC bridge account name ----------------------------------------------
 
-int net_whoami(const Config *cfg, char *name, size_t name_len, char *email, size_t email_len)
+extern Config g_cfg;
+extern int g_cfg_ok;
+
+const char *plat_bridge_url(void) { return g_cfg_ok && g_cfg.bridge ? g_cfg.bridge_url : ""; }
+
+static int bridge_get(const Config *cfg, const char *path, StrBuf *body, size_t max)
 {
-    name[0] = email[0] = 0;
     if (!cfg->bridge || g_http_ctx < 0)
         return -1;
-    char url[200];
-    snprintf(url, sizeof(url), "%s/v1/whoami", cfg->bridge_url);
+    char url[400];
+    snprintf(url, sizeof(url), "%s%s", cfg->bridge_url, path);
     int tpl = -1, conn = -1, req = -1, status = 0, r = -1;
-    StrBuf body;
-    sb_init(&body);
     tpl = sceHttpCreateTemplate(g_http_ctx, USER_AGENT, ORBIS_HTTP_VERSION_1_1, 1);
     if (tpl < 0)
         goto out;
     sceHttpSetConnectTimeOut(tpl, 10 * 1000 * 1000);
-    sceHttpSetRecvTimeOut(tpl, 20 * 1000 * 1000);
+    sceHttpSetRecvTimeOut(tpl, 60 * 1000 * 1000);
+    sceHttpsDisableOption(tpl, HTTPS_FLAG_SERVER_VERIFY | HTTPS_FLAG_CN_CHECK | HTTPS_FLAG_NOT_AFTER_CHECK |
+                               HTTPS_FLAG_NOT_BEFORE_CHECK | HTTPS_FLAG_KNOWN_CA_CHECK);
+    sceHttpsSetSslCallback(tpl, accept_any_cert, NULL);
     if ((conn = sceHttpCreateConnectionWithURL(tpl, url, true)) < 0)
         goto out;
     if ((req = sceHttpCreateRequestWithURL(conn, ORBIS_METHOD_GET, url, 0)) < 0)
@@ -421,20 +428,11 @@ int net_whoami(const Config *cfg, char *name, size_t name_len, char *email, size
     if (sceHttpSendRequest(req, NULL, 0) < 0)
         goto out;
     sceHttpGetStatusCode(req, &status);
-    if (status != 200)
-        goto out;
-    char buf[1024];
+    char buf[4096];
     int n;
-    while (body.len < 8192 && (n = sceHttpReadData(req, buf, sizeof(buf))) > 0)
-        sb_appendn(&body, buf, (size_t)n);
-    JVal *v = body.data ? json_parse(body.data) : NULL;
-    const char *nm = v ? json_get_str(v, "name") : NULL, *em = v ? json_get_str(v, "email") : NULL;
-    if (nm)
-        snprintf(name, name_len, "%s", nm);
-    if (em)
-        snprintf(email, email_len, "%s", em);
-    json_free(v);
-    r = (name[0] || email[0]) ? 0 : -1;
+    while (body->len < max && (n = sceHttpReadData(req, buf, sizeof(buf))) > 0)
+        sb_appendn(body, buf, (size_t)n);
+    r = status == 200 ? 0 : -1;
 out:
     if (req >= 0)
         sceHttpDeleteRequest(req);
@@ -442,6 +440,33 @@ out:
         sceHttpDeleteConnection(conn);
     if (tpl >= 0)
         sceHttpDeleteTemplate(tpl);
+    return r;
+}
+
+int plat_bridge_get(const char *path, StrBuf *body)
+{
+    if (!g_cfg_ok)
+        return -1;
+    Config c = g_cfg;
+    return bridge_get(&c, path, body, 4 * 1024 * 1024);
+}
+
+int net_whoami(const Config *cfg, char *name, size_t name_len, char *email, size_t email_len)
+{
+    name[0] = email[0] = 0;
+    StrBuf body;
+    sb_init(&body);
+    int r = -1;
+    if (bridge_get(cfg, "/v1/whoami", &body, 8192) == 0 && body.data) {
+        JVal *v = json_parse(body.data);
+        const char *nm = v ? json_get_str(v, "name") : NULL, *em = v ? json_get_str(v, "email") : NULL;
+        if (nm)
+            snprintf(name, name_len, "%s", nm);
+        if (em)
+            snprintf(email, email_len, "%s", em);
+        json_free(v);
+        r = (name[0] || email[0]) ? 0 : -1;
+    }
     sb_free(&body);
     return r;
 }

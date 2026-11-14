@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // TrueType text drawing into a 32-bit framebuffer (stb_truetype).
 #pragma once
 #include <stdint.h>
@@ -37,6 +37,8 @@ void canvas_fill(Canvas *c, Rect r, uint32_t rgb, const Rect *clip);
 void canvas_round(Canvas *c, Rect r, int radius, uint32_t rgb, const Rect *clip);
 void canvas_round_border(Canvas *c, Rect r, int radius, int width, uint32_t border, uint32_t fill, const Rect *clip);
 void canvas_dim(Canvas *c, Rect r, unsigned keep);
+// Draws an n x n alpha mask scaled to r, in one colour.
+void canvas_mask(Canvas *c, Rect r, const unsigned char *mask, int n, uint32_t rgb, const Rect *clip);
 
 // UTF-8 decode; advances *i. Invalid bytes decode as U+FFFD.
 unsigned utf8_next(const char *s, int len, int *i);

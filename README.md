@@ -1,4 +1,7 @@
+<!-- Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved. -->
 # Claude for PS4
+
+> **Unofficial.** This is an unofficial Claude app for the PS4, made by Chokri Hammedi (blue0x1). It is not made, endorsed or supported by Anthropic or Sony Interactive Entertainment. Claude is a trademark of Anthropic; PlayStation and PS4 are trademarks of Sony Interactive Entertainment.
 
 A native PS4 homebrew app (jailbroken console, GoldHEN) for chatting with Claude through the Anthropic API. Claude can also use console tools: it can read system info, browse and manage files, install and uninstall .pkg files, list and launch apps, set the fan threshold, look at your screenshots, and send payloads to GoldHEN BinLoader. Anything that writes, installs, deletes, launches or runs shows a confirm box first (on the TV, or on your phone if you use the phone remote). Nothing happens unless you allow it.
 
@@ -21,7 +24,8 @@ Settings are saved to `/data/claude/claude.ini`. You can also write that file yo
 | What you need | An API key from console.anthropic.com | A PC on the same network with Claude Code signed in to your Claude account, running `tools/claude-bridge.py` |
 | Billing | Pay per use on your API account | Uses your Claude plan's usage limits |
 | PC must be on | No | Yes |
-| Console tools (files, apps, pkg install, screenshots) | Yes | No, chat only |
+| Console tools (files, apps, pkg install, screenshots) | Yes | Yes (app 01.24 and the 01.24 bridge) |
+| Install from PC, update check, PC dashboard | No | Yes (app 01.26 and the 01.26 bridge) |
 | Model | Any API model (default claude-opus-5-5) | Whatever Claude Code uses, or `--model` on the bridge |
 
 The PS4 cannot sign in to claude.ai directly: Anthropic does not let third-party apps use claude.ai account logins. The bridge stays within the rules by running the official Claude Code CLI on your own PC with your own login, and only passes text between it and the PS4.
@@ -35,7 +39,28 @@ claude            # once: sign in with /login, then exit
 python3 tools/claude-bridge.py            # add --model opus or sonnet if you like
 ```
 
-It prints a bridge address (for example `http://192.168.1.50:8787`) and a pairing code. On the PS4 press Options, open the page on your phone, choose "PC bridge" and enter both. Allow port 8787 in the PC firewall if it has one. Claude Code's own tools are turned off in the bridge (`--tools ""`), so the PS4 cannot make it run commands on your PC. Each PS4 chat maps to one Claude Code session, kept in `~/.config/claude-ps4-bridge/`.
+It prints a bridge address (for example `http://192.168.1.50:8787`) and a pairing code. The quickest way to pair: open `http://127.0.0.1:8787` in a browser on the PC (the dashboard, which only opens on that PC), press Options on the PS4 and type the PIN from the TV into "Pair your PS4" ("Find my PS4" fills in its address). Or on the PS4 press Options, open the page on your phone, choose "PC bridge" and enter both.
+
+The dashboard also shows the connected PS4, the packages waiting to be installed with their transfer progress, and the newest Claude for PS4 version on the PC. Options: `--pkg-dir` (folder of .pkg files to install from the PC, default `~/PS4/pkg`), `--app-pkg` (the Claude for PS4 pkg the PS4 compares its version with; by default the newest one next to the script), `--https` (encrypts the PS4's traffic with a self-signed certificate made by `openssl`; use an `https://` bridge address on the PS4. Packages then come from the next port over plain HTTP, because the PS4 installer cannot use a self-signed certificate). Allow port 8787 in the PC firewall if it has one. Claude Code's own tools are turned off in the bridge (`--tools ""`), so the PS4 cannot make it run commands on your PC. The PS4 console tools still work: the bridge offers them to Claude Code through a small local MCP server (the same script, `--mcp-child`), sends each call to the PS4 as a normal tool call, and passes the result back. The tools run on the PS4 with the same confirm boxes as in API key mode. A turn left waiting for a tool result for 20 minutes is ended. Each PS4 chat maps to one Claude Code session, kept in `~/.config/claude-ps4-bridge/`.
+
+## What Claude can do for you
+
+- **Undo deletes.** Deletes go to a trash first ("what did you delete?", "put it back", "empty the trash"). Every change is logged with who approved it ("what did you change today?").
+- **Free up space.** "What is using my storage?" lists games with their updates and DLC, leftovers from removed games, installers you no longer need and big files, then cleans up what you pick with one confirm.
+- **Back up saves.** "Back up all my saves to USB" or "restore my GTA saves from yesterday". Each backup is a new version (20 kept per game); a restore backs up the current saves first. Saves are tied to this console and user.
+- **Install from your PC.** Put .pkg files in `~/PS4/pkg` on the PC and say "install the new games from my PC". Progress shows in the chat ("how far is it?") and a pop-up says when each is done.
+- **GoldHEN.** "Which cheats are there for this game?", "turn on the 60 FPS plugin for Bloodborne", "turn on the FPS counter". Plugin and setting changes back up the ini file first.
+- **Health.** "Is my PS4 running hot?" shows temperatures over time; "use the quiet fan" or "auto" picks a fan profile that comes back after a reboot.
+- **Remember things.** "Remember that USB 0 is for backups." Claude uses it in every chat; "forget that" removes it.
+- **Check for updates.** With the bridge, "is there an app update?" compares this version with the Claude for PS4 pkg on the PC. To update, copy the new pkg to `/data/pkg`, uninstall Claude for PS4 and install the new one (chats and settings in `/data/claude` stay); the PS4 installer does not install over an installed app.
+
+### Permission modes
+
+In the phone menu pick how much Claude may do: **Ask before every change** (default), **Trusted** (safe, undoable changes such as folders, copies, installs, backups, fan profiles and deletes that go to the trash run without asking; permanent deletes, uninstalls and payloads still ask), **Read-only** (look, never change) or **Kid mode** (read-only, a kid-friendly tone, no launching games). Claude can switch to a stricter mode itself but never to a looser one.
+
+## Home screen folders
+
+Ask Claude to sort your games, for example "make a folder called Racing with Need for Speed and GTA V". It can list, create, rename and remove home screen folders and move games in and out of them. Every change shows a confirm box, makes a backup of the home screen database in `/data/claude/backups` first (the newest 10 are kept) and checks the database afterwards. "Undo the last folder change" puts the newest backup back. The home screen reads folders when it starts, so restart the PS4 to see a change, and don't edit folders on the PS4 itself until then.
 
 ## Phone remote
 
@@ -46,9 +71,11 @@ The phone page keeps running while the app is open. Press Options to see the QR 
 - stop a reply, start a new chat
 - change settings
 
-Five wrong PINs make a new one appear on the TV.
+Five wrong PINs make a new one appear on the TV and lock the sign-in for 30 seconds (doubling each time, up to 15 minutes). The page only answers devices on your home network (private addresses), so it stays closed to the internet even if a router port forward or DMZ points at the PS4. The bridge works the same way: home network only, and five wrong pairing codes block that address for a while.
 
-Both the phone page and the bridge use plain HTTP on your home network, protected by the PIN and the pairing code. Use them only on a network you trust.
+The phone page uses plain HTTP on your home network, protected by the PIN. The bridge does too unless started with `--https`. Use them only on a network you trust.
+
+The phone page has a microphone button next to Send. Phone browsers only allow the microphone on https pages, so on the PS4's page the button shows how to use the keyboard microphone instead (or, in Chrome on Android, how to allow this page in chrome://flags so the button itself listens), a "Help with my screen" button (take a screenshot with SHARE first; Claude looks at it) and quick actions on the start screen. The menu has the permission mode.
 
 ## Look and models
 
@@ -98,6 +125,9 @@ The bottom left shows who is signed in: your Claude account name in bridge mode 
 | set_fan_threshold (45 to 80 C, resets on reboot) | yes |
 | send_payload (.bin to GoldHEN BinLoader, port 9090) | yes |
 | launch_app (closes this app) | yes |
+| list_trash, show_history, storage_report, list_game_saves, list_save_backups, list_pc_packages, install_status, list_cheats, list_game_patches, list_plugins, goldhen_settings, health_report, temperature_history, get_preferences, check_app_update | no |
+| restore_from_trash, empty_trash, delete_paths, restore_saves, install_from_pc, set_plugin, set_goldhen_setting, set_fan_profile | yes (some skip it in trusted mode) |
+| backup_saves, remember, forget, set_permission_mode (stricter only) | no |
 
 `/system`, `/system_ex`, `/preinst`, `/update`, `/dev` and the top-level folders themselves (`/data`, `/user`, `/mnt/usb0`) can never be written or deleted, even with a confirm.
 
@@ -123,17 +153,16 @@ make -C tests OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 ## Status
 
-Version 01.10. Chat through the PC bridge is confirmed on a real PS4 (CUH-7016B, firmware 14.00, GoldHEN). API key mode, the console tools and the phone remote are tested off-console (host tests, UI and phone page previews) but not yet on hardware. pkg install, uninstall, fan control and payloads use the common homebrew system calls; tell us if one fails on your firmware.
+Version 01.26, tested on a real PS4 (CUH-7016B, firmware 14.00, GoldHEN) through the PC bridge. Tested on the console: chat, saved chats, install from PC with progress, save backup and restore, GoldHEN plugin and setting changes, health report, uptime and fan profiles, the update check, trash, all four permission modes, and the phone page (quick actions, screen help, mic help). pkg install, uninstall, fan control and payloads use the common homebrew system calls; tell us if one fails on your firmware.
 
 Requests that fail before any reply text (no connection, rate limited, overloaded) are retried twice, after 2 and 4 seconds. At start the app warns if the clock looks wrong, since HTTPS needs the right date.
 
-Planned:
-- Saved chats you can reopen, Markdown rendering
-- Crash log reader shortcuts
-- Voice input
+Known limits:
+- The update check only tells you a new version is ready. Install it from the PS4 (Package Installer or install_from_pc). The app cannot replace itself.
+- The phone mic needs HTTPS, or Chrome's "insecure origins treated as secure" flag. The phone keyboard's own mic works everywhere.
 
 See CHANGELOG.md for what changed.
 
 ## Licenses
 
-DejaVu Sans font: see `assets/fonts/DejaVu-LICENSE.txt`. stb_truetype: public domain / MIT. QR codes: Project Nayuki QR Code generator (MIT). GoldHEN jailbreak call based on the GoldHEN Plugins SDK (MIT).
+Claude for PS4 is an unofficial app by Chokri Hammedi (blue0x1), with no link to Anthropic or Sony. DejaVu Sans font: see `assets/fonts/DejaVu-LICENSE.txt`. stb_truetype: public domain / MIT. QR codes: Project Nayuki QR Code generator (MIT). GoldHEN jailbreak call based on the GoldHEN Plugins SDK (MIT).

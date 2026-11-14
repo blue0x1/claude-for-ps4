@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Parses a streamed Messages API response (server-sent events), shows text
 // as it arrives and rebuilds the full assistant message for the history.
 #pragma once

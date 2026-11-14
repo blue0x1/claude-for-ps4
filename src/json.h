@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Minimal JSON parser, enough for Messages API responses and stream events.
 #pragma once
 

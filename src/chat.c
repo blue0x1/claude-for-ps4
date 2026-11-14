@@ -1,5 +1,6 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #include "chat.h"
+#include "prefs.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,10 +110,15 @@ void chat_build_request(Chat *c, const Config *cfg, const char *tools_json, StrB
     }
     if (!cfg->bridge && config_use_fallbacks(cfg))
         sb_append(out, ",\"fallbacks\":\"default\"");
-    if (cfg->system[0]) {
+    StrBuf sys;
+    sb_init(&sys);
+    sb_append(&sys, cfg->system);
+    prefs_system_extra(&sys);
+    if (sys.len) {
         sb_append(out, ",\"system\":");
-        sb_append_json_string(out, cfg->system);
+        sb_append_json_string(out, sys.data);
     }
+    sb_free(&sys);
     if (tools_json && *tools_json) {
         sb_append(out, ",\"tools\":");
         sb_append(out, tools_json);
@@ -130,7 +136,12 @@ void chat_build_request(Chat *c, const Config *cfg, const char *tools_json, StrB
 
 int chat_ask_confirm(Chat *c, const char *text)
 {
+    if (c->auto_approve) {
+        c->confirm_by = 2;
+        return 1;
+    }
     snprintf(c->confirm_text, sizeof(c->confirm_text), "%s", text);
+    c->confirm_by = -1;
     c->confirm_title[0] = c->confirm_yes[0] = c->confirm_no[0] = 0;
     c->confirm = CONFIRM_PENDING;
     c->dirty = 1;

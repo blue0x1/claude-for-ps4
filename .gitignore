@@ -1,3 +1,4 @@
+# Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 build/
 eboot.bin
 pkg.gp4
@@ -6,3 +7,8 @@ sce_sys/param.sfo
 claude.ini
 tests/out_request.json
 tests/phone_server
+
+# Icon design renders (SVGs are kept, PNGs are previews)
+icon-designs/*.png
+# Tool scratch folder
+.sync/

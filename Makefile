@@ -1,9 +1,10 @@
+# Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 # Claude for PS4: chat with Claude on a jailbroken PS4.
 # Build: make            (needs the OpenOrbis toolchain, clang and ld.lld)
 #        make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 TITLE       := Claude for PS4
-VERSION     := 01.23
+VERSION     := 01.26
 TITLE_ID    := CLDE00001
 CONTENT_ID  := IV0000-CLDE00001_00-CLAUDEFORPS40000
 
@@ -20,10 +21,10 @@ LIBMODULES  := $(wildcard sce_module/*)
 
 BUILDDIR    := build
 CFILES      := $(wildcard src/*.c)
-OBJS        := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(CFILES))
+OBJS        := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(CFILES)) $(BUILDDIR)/sqlite3.o
 HEADERS     := $(wildcard src/*.h)
 
-CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -O2 -Wall -Wno-unused-function -D__ORBIS__ -DAPP_VERSION=\"$(VERSION)\" \
+CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -O2 -Wall -Wno-unused-function -D__ORBIS__ -DAPP_VERSION=\"$(VERSION)\" -Ithird_party/sqlite \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include -isystem $(TOOLCHAIN)/include/stb -c
 LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib $(LIBS) $(TOOLCHAIN)/lib/crt1.o
 
@@ -66,6 +67,16 @@ sce_sys/param.sfo: Makefile
 eboot.bin: $(OBJS)
 	$(LD) $(OBJS) -o $(BUILDDIR)/claude.elf $(LDFLAGS)
 	$(BIN)/create-fself -in=$(BUILDDIR)/claude.elf -out=$(BUILDDIR)/claude.oelf --eboot "eboot.bin" --paid 0x3800000000000011
+
+# SQLite for the home screen folder tools (src/homefolders.c). One thread uses
+# it, WAL and memory maps are off, and its fcntl/lstat are replaced at run time.
+SQLITE_FLAGS := -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_WAL -DSQLITE_MAX_MMAP_SIZE=0 \
+               -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DQS=0 \
+               -DHAVE_USLEEP=1 -Wno-everything
+
+$(BUILDDIR)/sqlite3.o: third_party/sqlite/sqlite3.c
+	@mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) $(SQLITE_FLAGS) -o $@ $<
 
 $(BUILDDIR)/%.o: src/%.c $(HEADERS)
 	@mkdir -p $(BUILDDIR)

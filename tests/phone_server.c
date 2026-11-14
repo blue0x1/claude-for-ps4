@@ -1,3 +1,4 @@
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Host-only harness: serves the phone page on 127.0.0.1:8765 with a fake
 // chat, so the page can be checked in a desktop browser.
 #include <arpa/inet.h>

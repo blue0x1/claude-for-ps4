@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Screen drawing. No console APIs here, so it also builds on a PC for previews.
 // Layout: a sidebar on the left, the chat column in the middle and a message
 // box at the bottom, in a warm dark theme.
@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "layout.h"
+#include "mark_data.h"
 #include "plat.h"
 #include "qrcodegen.h"
 #include "rich.h"
@@ -169,18 +170,12 @@ static int draw_key(Canvas *c, int x, int y, const char *label)
     return w;
 }
 
-// The app mark: an orange tile with a speech bubble.
+// The app mark: the home screen icon (orange tile, dark gamepad, typing dots).
 static void draw_mark(Canvas *c, int x, int y, int s)
 {
-    canvas_round(c, (Rect){ x, y, s, s }, s / 4, COL_ACCENT, NULL);
-    int bw = s * 60 / 100, bh = s * 42 / 100, bx = x + (s - bw) / 2, by = y + s * 24 / 100;
-    canvas_round(c, (Rect){ bx, by, bw, bh }, bh / 3, 0xFFF7F0, NULL);
-    for (int i = 0; i < s / 7; i++)  // tail
-        canvas_fill(c, (Rect){ bx + bw / 5, by + bh + i, s / 7 - i, 1 }, 0xFFF7F0, NULL);
-    int d = s / 11 > 2 ? s / 11 : 2;
-    for (int k = 0; k < 3; k++)
-        canvas_round(c, (Rect){ bx + bw / 2 - 2 * d - d / 2 + k * 2 * d, by + bh / 2 - d / 2, d, d }, d / 2,
-                     COL_ACCENT, NULL);
+    canvas_round(c, (Rect){ x, y, s, s }, s / 4, 0xE07A56, NULL);
+    canvas_mask(c, (Rect){ x, y, s, s }, MARK_GAMEPAD, MARK_N, 0x1C1917, NULL);
+    canvas_mask(c, (Rect){ x, y, s, s }, MARK_DOTS, MARK_N, 0xF4EDE4, NULL);
 }
 
 // ---- messages -------------------------------------------------------------
@@ -283,6 +278,7 @@ int          g_recent_count;
 char         g_chat_id[HISTORY_ID_MAX];
 char         g_profile[96];
 char         g_profile_sub[96];
+int          g_about;
 
 int side_count(void)
 {
@@ -342,7 +338,7 @@ static void draw_avatar(Canvas *c, int x, int y, int s, const char *name)
     text(c, &g_body, x + (s - w) / 2, y + (s - g_body.line_h) / 2, first, 0xFFF7F0);
 }
 
-#define RECENT_Y     470
+#define RECENT_Y     540
 #define RECENT_ROW   46
 #define PROFILE_Y    (SCREEN_H - 172)
 
@@ -371,6 +367,8 @@ static void draw_sidebar(Canvas *c)
     side_row(c, y, "Use your phone", url[0] ? url : NULL, "OPTIONS", -1);
     y += 70;
     side_row(c, y, "Reload settings", NULL, NULL, BTN_TRIANGLE);
+    y += 70;
+    side_row(c, y, "About", NULL, "L2", -1);
 
     // Recents
     int ry = RECENT_Y;
@@ -455,7 +453,7 @@ static void draw_composer(Canvas *c, int empty_chat)
 
     int by = r.y + r.h - g_small.line_h - 18;
     if (g_cfg_ok) {
-        text(c, &g_tiny, r.x + 30, by + 4, g_cfg.bridge ? "Chat only" : "Tools on", COL_FAINT);
+        text(c, &g_tiny, r.x + 30, by + 4, "Tools on", COL_FAINT);
         char buf[160];
         if (g_cfg.effort[0])
             snprintf(buf, sizeof(buf), "%s  \xC2\xB7  %s effort", active_model_name(), effort_name(g_cfg.effort));
@@ -511,6 +509,44 @@ static void draw_confirm(Canvas *c)
     pill(c, x, y, BTN_CIRCLE, g_chat.confirm_no[0] ? g_chat.confirm_no : "Deny", 0);
     if (g_setup.active)
         text(c, &g_tiny, r.x + 64, y + 96, "You can also answer on your phone.", COL_FAINT);
+}
+
+static void draw_about(Canvas *c)
+{
+    int cw = 860, ch = 540;
+    Rect r = card(c, cw, ch);
+    int cx = r.x, cy = r.y;
+
+    // Logo + app name
+    draw_mark(c, cx + 60, cy + 44, 72);
+    text(c, &g_head, cx + 152, cy + 46, "Claude for PS4", COL_TEXT);
+    text(c, &g_small, cx + 155, cy + 46 + g_head.line_h + 2, "Version " APP_VERSION, COL_DIM);
+
+    // Divider
+    int dy = cy + 160;
+    canvas_fill(c, (Rect){ cx + 48, dy, cw - 96, 1 }, COL_LINE, NULL);
+    dy += 24;
+
+    // Credits
+    text(c, &g_small, cx + 60, dy, "Made by", COL_FAINT);
+    dy += g_small.line_h + 8;
+    text(c, &g_body, cx + 60, dy, "Chokri Hammedi  (blue0x1)", COL_TEXT);
+    dy += g_body.line_h + 6;
+    text(c, &g_small, cx + 60, dy, "https://github.com/blue0x1", COL_ACCENT);
+    dy += g_small.line_h + 32;
+
+    // Disclaimer
+    text(c, &g_tiny, cx + 60, dy,
+         "Unofficial. Not affiliated with Anthropic or Sony Interactive Entertainment.",
+         COL_FAINT);
+    dy += g_tiny.line_h + 6;
+    text(c, &g_tiny, cx + 60, dy,
+         "Claude is a trademark of Anthropic. PlayStation and PS4 are trademarks of Sony.",
+         COL_FAINT);
+
+    // Close button
+    int by = cy + ch - 110;
+    pill(c, cx + 60, by, BTN_CIRCLE, "Close", 0);
 }
 
 static void draw_setup(Canvas *c)
@@ -737,4 +773,6 @@ void render(Canvas *c, int frame)
         draw_setup(c);
     else if (g_picker.open)
         draw_picker(c);
+    else if (g_about)
+        draw_about(c);
 }

@@ -1,17 +1,36 @@
-<div class=top><button class="ib mb" id=mb aria-label="Chats"><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.2 stroke-linecap=round><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><svg class=mark viewBox="0 0 30 30"><rect width=30 height=30 rx=8 fill="#d97757"/><rect x=6 y=7 width=18 height=12 rx=4 fill="#fff7f0"/><path d="M10 19v5l5-5z" fill="#fff7f0"/><circle cx=11 cy=13 r=1.6 fill="#d97757"/><circle cx=15 cy=13 r=1.6 fill="#d97757"/><circle cx=19 cy=13 r=1.6 fill="#d97757"/></svg>
+<!-- Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved. -->
+<div class=top><button class="ib mb" id=mb aria-label="Chats"><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.2 stroke-linecap=round><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><svg class=mark viewBox="0 0 512 512"><rect width=512 height=512 rx=128 fill="#e07a56"/><path d="M150 170h212c50 0 76 30 90 90l22 96c8 38-22 64-52 52-20-8-36-34-52-60H142c-16 26-32 52-52 60-30 12-60-14-52-52l22-96c14-60 40-90 90-90z" fill="#1c1917"/><g fill="#f4ede4"><circle cx=196 cy=268 r=24 /><circle cx=256 cy=268 r=24 /><circle cx=316 cy=268 r=24 /></g></svg>
 <div class=name>Claude</div><button class=ib id=nb>New chat</button><a class=ib href=/settings>Settings</a></div>
 <div class=shade id=sh></div><nav class=drawer id=dr><div class=dh>Chats</div>
 <button class=dnew id=dn>+ New chat</button><div class=dl>Recents</div><div id=rl class=rl></div>
 <div class=prof><div class=av id=av>?</div><div class=pn><div id=pn>PS4 user</div><div id=ps class=hint></div></div></div>
+<div class=dl>Permissions</div><select class="sel pm" id=pm aria-label="Permission mode">
+<option value=full>Ask before every change</option><option value=trusted>Trusted: safe changes without asking</option>
+<option value=read-only>Read-only: look, never change</option><option value=kid>Kid mode</option></select>
 <button class=lo id=lo>Log out</button></nav>
-<div class=wrap><div id=hello class=hello><svg class=mark style="width:48px;height:48px" viewBox="0 0 30 30"><rect width=30 height=30 rx=8 fill="#d97757"/><rect x=6 y=7 width=18 height=12 rx=4 fill="#fff7f0"/><path d="M10 19v5l5-5z" fill="#fff7f0"/><circle cx=11 cy=13 r=1.6 fill="#d97757"/><circle cx=15 cy=13 r=1.6 fill="#d97757"/><circle cx=19 cy=13 r=1.6 fill="#d97757"/></svg>
-<h2 id=greet>Hello</h2><p>Chatting through your PS4.</p></div><div id=log></div><div id=think class=think style="display:none"><i></i><i></i><i></i>&nbsp;Thinking</div></div>
+<div class=wrap><div id=hello class=hello><svg class=mark style="width:48px;height:48px" viewBox="0 0 512 512"><rect width=512 height=512 rx=128 fill="#e07a56"/><path d="M150 170h212c50 0 76 30 90 90l22 96c8 38-22 64-52 52-20-8-36-34-52-60H142c-16 26-32 52-52 60-30 12-60-14-52-52l22-96c14-60 40-90 90-90z" fill="#1c1917"/><g fill="#f4ede4"><circle cx=196 cy=268 r=24 /><circle cx=256 cy=268 r=24 /><circle cx=316 cy=268 r=24 /></g></svg>
+<h2 id=greet>Hello</h2><p>Chatting through your PS4.</p>
+<div class=chips><button class=chip data-q="Look at my newest screenshot and help me with what is on the screen.">Help with my screen</button>
+<button class=chip data-q="Check my PS4's storage and suggest what I could clean up.">Free up space</button>
+<button class=chip data-q="How is my PS4's health? Check temperatures and storage.">Health check</button>
+<button class=chip data-q="Back up the save data of all my games.">Back up my saves</button>
+<button class=chip data-q="What packages are on my PC that I can install?">Install from PC</button></div></div><div id=log></div><div id=think class=think style="display:none"><i></i><i></i><i></i>&nbsp;Thinking</div></div>
 <div class=dock><div class=comp><textarea id=t rows=1 placeholder="Reply to Claude..."></textarea>
 <div class=row><select class=sel id=ms aria-label=Model></select><select class=sel id=es aria-label=Effort></select><span class=sp></span>
+<button class="ib mic" id=mic aria-label="Speak" title="Speak"><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.2 stroke-linecap=round stroke-linejoin=round><rect x=9 y=3 width=6 height=11 rx=3 /><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+<button class="ib mic" id=scr aria-label="Help with my screen" title="Help with my screen"><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.2 stroke-linecap=round stroke-linejoin=round><rect x=3 y=5 width=18 height=12 rx=2 /><path d="M8 21h8M12 17v4"/></svg></button>
 <button class=go id=go aria-label=Send><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.4 stroke-linecap=round stroke-linejoin=round><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div>
 <div class=st id=st>Connecting...</div></div>
 <div class=modal id=cf><div class=card><h3 id=cfh>Allow this action?</h3><pre id=cft></pre><div class=row>
 <button class="btn pri" id=ya>Allow</button><button class="btn sec" id=na>Deny</button></div></div></div>
+<div class=modal id=mh><div class=card><h3>Speak instead of typing</h3>
+<p class=mt>Phone browsers only allow the microphone on secure (https) pages, and this page comes straight from your PS4, so the button cannot listen itself. Two ways to talk:</p>
+<p class=mt><b>Keyboard microphone</b> (easiest): tap the message box, then the microphone on the keyboard.<br>
+Android (Gboard): Gboard settings &gt; Voice typing &gt; on; the mic is at the top right of the keyboard.<br>
+Samsung keyboard: Settings &gt; Samsung Keyboard &gt; Voice input.<br>
+iPhone: Settings &gt; General &gt; Keyboard &gt; Enable Dictation; the mic is at the bottom right.</p>
+<p class=mt><b>Make this button work</b> (Chrome on Android): open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, enter <code id=orig></code>, set it to Enabled and restart Chrome.</p>
+<div class=row><button class="btn pri" id=mhok>Type with the keyboard mic</button><button class="btn sec" id=mhx>Close</button></div></div></div>
 <script>
 var n=0,g=-1,busy=0,ready=0,bridge=-1,cur={},$=function(i){return document.getElementById(i)},log=$('log');
 var M={api:[["claude-opus-5-5","Opus 5.5"],["claude-sonnet-5-5","Sonnet 5.5"],["claude-haiku-5-5","Haiku 5.5"],["claude-fable-5-2","Fable 5.2"],["claude-opus-5","Opus 5"]],
@@ -50,6 +69,7 @@ $('rl').innerHTML=h||'<div class=hint>No saved chats yet</div>'}).catch(function
 $('mb').onclick=function(){drawer(1)};$('sh').onclick=function(){drawer(0)};
 $('dn').onclick=function(){drawer(0);post('/api/new','')};
 $('rl').onclick=function(e){var b=e.target.closest('.rc');if(!b)return;drawer(0);post('/api/open','id='+encodeURIComponent(b.getAttribute('data-id')))};
+$('pm').onchange=function(){post('/api/permissions','mode='+encodeURIComponent($('pm').value))};
 $('lo').onclick=function(){drawer(0);post('/api/logout','')};
 $('ya').onclick=function(){post('/api/confirm','yes')};$('na').onclick=function(){post('/api/confirm','no')};
 var SEND='<svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.4 stroke-linecap=round stroke-linejoin=round><path d="M12 19V5M5 12l7-7 7 7"/></svg>',STOP='<svg width=14 height=14 viewBox="0 0 14 14"><rect width=14 height=14 rx=3 fill=currentColor /></svg>';
@@ -65,7 +85,22 @@ $('st').textContent=!j.ready?'Not set up yet: open Settings.':j.bridge?'Through 
 var go=$('go');go.disabled=!j.ready;go.className=busy?'go stop':'go';go.innerHTML=busy?STOP:SEND;go.setAttribute('aria-label',busy?'Stop':'Send');
 var cf=$('cf');if(j.confirm!==null){cf.style.display='flex';$('cft').textContent=j.confirm;$('cfh').textContent=j.confirm_title;$('ya').textContent=j.confirm_yes;$('na').textContent=j.confirm_no}else cf.style.display='none';
 $('pn').textContent=j.profile||'PS4 user';$('ps').textContent=j.profile_sub||'';$('av').textContent=(j.profile||'?').charAt(0).toUpperCase();$('lo').style.display=j.ready?'block':'none';
+if(j.mode&&document.activeElement!==$('pm'))$('pm').value=j.mode;
 if(atEnd&&j.msgs.length)window.scrollTo(0,document.body.scrollHeight)})
 .catch(function(){$('st').textContent='PS4 not reachable'})}
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition,rec=null;
+$('mic').onclick=function(){var t=$('t');
+if(!SR||!window.isSecureContext){$('orig').textContent=location.origin;$('mh').style.display='flex';return}
+if(rec){rec.stop();return}
+rec=new SR();rec.interimResults=true;rec.lang=navigator.language||'en-US';var base=t.value?t.value+' ':'';
+rec.onresult=function(e){var s='';for(var i=0;i<e.results.length;i++)s+=e.results[i][0].transcript;t.value=base+s;grow()};
+rec.onend=function(){rec=null;$('mic').className='ib mic'};
+rec.onerror=function(e){rec=null;$('mic').className='ib mic';if(e.error=='not-allowed'||e.error=='service-not-allowed'){$('orig').textContent=location.origin;$('mh').style.display='flex'}else $('st').textContent='Could not hear you. Try again.'};
+$('mic').className='ib mic on';rec.start()};
+$('mhok').onclick=function(){$('mh').style.display='none';$('t').focus()};$('mhx').onclick=function(){$('mh').style.display='none'};
+function ask(q){if(busy||!ready)return;post('/api/send',q)}
+$('scr').onclick=function(){if(confirm('First press SHARE on the controller and take a screenshot of what you need help with. Done?'))ask('Look at my newest screenshot and help me with what is on the screen.')};
+document.querySelector('.chips').onclick=function(e){var b=e.target.closest('.chip');if(!b)return;
+var q=b.getAttribute('data-q');if(/screenshot/.test(q)){$('scr').onclick();return}ask(q)};
 poll();setInterval(poll,1000);
 </script></body></html>

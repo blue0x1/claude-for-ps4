@@ -1,6 +1,6 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #pragma once
 // Set by the Makefile from VERSION (same as param.sfo APP_VER).
 #ifndef APP_VERSION
-#define APP_VERSION "01.23"
+#define APP_VERSION "01.26"
 #endif

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Console tools Claude can call. Anything that writes, deletes, installs or
 // runs asks the user on screen first.
 #pragma once
@@ -19,6 +19,16 @@ int tools_run(Chat *chat, const char *name, const JVal *input, StrBuf *out, StrB
 int pkg_read_info(const char *path, char content_id[37], const char **pkg_type, unsigned long long *size);
 // Appends standard base64 of data.
 void base64_append(StrBuf *out, const unsigned char *data, size_t n);
+
+// Shared helpers: "1.5 GB" style sizes, and permanent recursive delete.
+void tools_human_size(unsigned long long b, char *out, size_t n);
+int tools_delete_tree(const char *path, StrBuf *out, int *count);
+// Copies a file or folder (merging into an existing folder). files counts copied files.
+int tools_copy_tree(const char *src, const char *dst, StrBuf *out, int *files);
+// Name of an installed game or app from its param.sfo. 0 if unknown.
+int tools_app_title(const char *title_id, char *out, size_t outlen);
+// Any string from an installed app's param.sfo (APP_VER, TITLE, ...).
+int tools_app_sfo(const char *title_id, const char *key, char *out, size_t outlen);
 
 // Short one-line description shown on screen while a tool runs.
 void tools_describe(const char *name, const JVal *input, char *out, int outlen);

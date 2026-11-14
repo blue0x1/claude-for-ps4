@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #pragma once
 #include "chat.h"
 #include "config.h"
@@ -71,6 +71,7 @@ extern char         g_chat_id[HISTORY_ID_MAX];  // saved chat on screen ("" = no
 extern char         g_profile[96];              // name shown at the bottom left
 extern char         g_profile_sub[96];
 int side_count(void);
+extern int          g_about;   // 1 while the About popup is showing
 
 void ui_init(void);   // after the fonts are loaded
 void render(Canvas *c, int frame);

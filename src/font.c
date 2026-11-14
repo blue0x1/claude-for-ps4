@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "font.h"
 
@@ -211,6 +211,39 @@ void canvas_round(Canvas *c, Rect r, int radius, uint32_t rgb, const Rect *clip)
                 uint32_t *p = c->px + (size_t)py * (size_t)c->stride + px;
                 *p = blend(c, *p, rgb, a);
             }
+        }
+    }
+}
+
+// Draws an n x n alpha mask scaled to r (box filter), in one colour.
+void canvas_mask(Canvas *c, Rect r, const unsigned char *mask, int n, uint32_t rgb, const Rect *clip)
+{
+    if (r.w <= 0 || r.h <= 0)
+        return;
+    Rect cr = clip_rect(c, clip);
+    for (int y = 0; y < r.h; y++) {
+        int py = r.y + y;
+        if (py < cr.y || py >= cr.y + cr.h)
+            continue;
+        int sy0 = y * n / r.h, sy1 = (y + 1) * n / r.h;
+        if (sy1 <= sy0)
+            sy1 = sy0 + 1;
+        for (int x = 0; x < r.w; x++) {
+            int px = r.x + x;
+            if (px < cr.x || px >= cr.x + cr.w)
+                continue;
+            int sx0 = x * n / r.w, sx1 = (x + 1) * n / r.w;
+            if (sx1 <= sx0)
+                sx1 = sx0 + 1;
+            unsigned sum = 0, cnt = 0;
+            for (int sy = sy0; sy < sy1 && sy < n; sy++)
+                for (int sx = sx0; sx < sx1 && sx < n; sx++, cnt++)
+                    sum += mask[sy * n + sx];
+            unsigned a = cnt ? sum / cnt : 0;
+            if (!a)
+                continue;
+            uint32_t *q = c->px + (size_t)py * (size_t)c->stride + px;
+            *q = blend(c, *q, rgb, a) | c->amask;
         }
     }
 }

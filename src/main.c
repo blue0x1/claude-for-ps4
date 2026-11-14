@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Claude for PS4: a chat client for the Claude API that can also use console
 // tools (files, apps, system info) after on-screen confirmation.
 #include <stdio.h>
@@ -24,6 +24,8 @@
 #include "history.h"
 #include "ui.h"
 #include "setup.h"
+#include "pcinstall.h"
+#include "health.h"
 #include "version.h"
 
 #include <orbis/NetCtl.h>
@@ -396,6 +398,11 @@ int main(void)
     setup_init(&g_setup, &g_chat);
     boot_step("GoldHEN jailbreak");
     plat_jailbreak();
+    {
+        char jb[200];
+        snprintf(jb, sizeof(jb), "full file access: %s", plat_jailbreak_status());
+        boot_step(jb);
+    }
     boot_step("network");
 
     char err[200];
@@ -430,6 +437,8 @@ int main(void)
     g_chat.dirty = 1;
 
     for (;; frame++) {
+        pcinstall_tick();
+        health_tick();
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
         }
@@ -450,7 +459,13 @@ int main(void)
             unsigned b = pd.buttons, pressed = b & ~prev_buttons;
             prev_buttons = b;
 
-            if (g_picker.open && g_chat.confirm != CONFIRM_PENDING && !g_setup.shown) {
+            if (g_about && g_chat.confirm != CONFIRM_PENDING) {
+                if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
+                    g_about = 0;
+                    g_chat.dirty = 1;
+                }
+                pressed = 0; b = 0;
+            } else if (g_picker.open && g_chat.confirm != CONFIRM_PENDING && !g_setup.shown) {
                 handle_picker(pressed);
                 pressed = 0;  // no scrolling or other actions while the picker is open
                 b = 0;
@@ -460,6 +475,8 @@ int main(void)
                     g_chat.dirty = 1;
                 }
             } else if (g_chat.confirm == CONFIRM_PENDING) {
+                if (pressed & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE))
+                    g_chat.confirm_by = 0;
                 if (pressed & ORBIS_PAD_BUTTON_CROSS)
                     g_chat.confirm = CONFIRM_YES;
                 else if (pressed & ORBIS_PAD_BUTTON_CIRCLE)
@@ -520,6 +537,10 @@ int main(void)
                         snprintf(msg, sizeof(msg), "Loaded %s (model %s).", g_cfg.loaded_from, g_cfg.model);
                         chat_add(&g_chat, ROLE_NOTICE, msg);
                     }
+                }
+                if (pressed & ORBIS_PAD_BUTTON_L2) {
+                    g_about = !g_about;
+                    g_chat.dirty = 1;
                 }
             }
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Phone page: a small web server on the PS4 for the local network.
 // The user opens it on a phone (QR code on screen) and signs in with the PIN
 // shown on the TV. Then the phone can chat (phone remote), answer confirm
@@ -25,6 +25,8 @@ typedef struct {
     char            url[64];    // http://<ip>:<port>/
     char            pin[8];
     int             bad_pins;
+    int             lock_round;   // rounds of 5 wrong PINs in a row
+    long            lock_until;   // no logins before this time()
     char            sessions[SETUP_SESSIONS][33];  // signed-in phones
     int             next_session;
     Config          cfg;        // current settings (prefill), updated on save

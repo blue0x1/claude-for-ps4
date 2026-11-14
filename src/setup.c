@@ -1,5 +1,6 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 #include "setup.h"
+#include "prefs.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -221,10 +222,8 @@ static void page_head(StrBuf *html)
 }
 
 static const char MARK_SVG[] =
-"<svg class=mark style='width:44px;height:44px' viewBox='0 0 30 30'><rect width=30 height=30 rx=8 fill='#d97757'/>"
-"<rect x=6 y=7 width=18 height=12 rx=4 fill='#fff7f0'/><path d='M10 19v5l5-5z' fill='#fff7f0'/>"
-"<circle cx=11 cy=13 r=1.6 fill='#d97757'/><circle cx=15 cy=13 r=1.6 fill='#d97757'/>"
-"<circle cx=19 cy=13 r=1.6 fill='#d97757'/></svg>";
+"<svg class=mark style='width:44px;height:44px' viewBox='0 0 512 512'>"
+"<rect width=512 height=512 rx=128 fill='#e07a56'/><path d='M150 170h212c50 0 76 30 90 90l22 96c8 38-22 64-52 52-20-8-36-34-52-60H142c-16 26-32 52-52 60-30 12-60-14-52-52l22-96c14-60 40-90 90-90z' fill='#1c1917'/><g fill='#f4ede4'><circle cx=196 cy=268 r=24 /><circle cx=256 cy=268 r=24 /><circle cx=316 cy=268 r=24 /></g></svg>";
 
 static void select_options(StrBuf *html, const char *const *values, const char *const *names, const char *cur)
 {
@@ -424,6 +423,8 @@ static void build_state(Setup *s, const char *req, StrBuf *json)
     sb_append_json_string(json, profile);
     sb_append(json, ",\"profile_sub\":");
     sb_append_json_string(json, profile_sub);
+    sb_append(json, ",\"mode\":");
+    sb_append_json_string(json, prefs_mode());
     sb_append(json, ",\"chat\":");
     sb_append_json_string(json, cur);
     sb_append(json, ",\"confirm\":");
@@ -471,8 +472,8 @@ static int handle_save(Setup *s, const char *body, StrBuf *html, StrBuf *resp)
         error = "Enter your API key.";
     else if (!bridge && key[0] && strncmp(key, "sk-ant-", 7))
         error = "That does not look like an Anthropic API key (it starts with sk-ant-).";
-    else if (bridge && strncmp(burl, "http://", 7))
-        error = "The bridge address must start with http:// (for example http://192.168.1.50:8787).";
+    else if (bridge && strncmp(burl, "http://", 7) && strncmp(burl, "https://", 8))
+        error = "The bridge address must start with http:// or https:// (for example http://192.168.1.50:8787).";
     else if (bridge && !btok[0] && !c.bridge_token[0])
         error = "Enter the pairing code that claude-bridge.py printed.";
     else if ((model[0] && !config_model_ok(model)) || (bmodel[0] && !config_model_ok(bmodel)) ||
@@ -540,6 +541,17 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
         char pin[16];
         form_get(body, "pin", pin, sizeof(pin), 0);
         pthread_mutex_lock(&s->lock);
+        long now = (long)time(NULL), wait_s = s->lock_until - now;
+        if (wait_s > 0) {
+            // Locked after wrong PINs: no guess is checked at all.
+            pthread_mutex_unlock(&s->lock);
+            char msg[160];
+            snprintf(msg, sizeof(msg), "Too many wrong PINs. Try again in %ld s with the new PIN on the TV.", wait_s);
+            build_login(s, &html, msg);
+            respond(resp, 429, "Too Many Requests", html.data);
+            sb_free(&html);
+            return 0;
+        }
         int ok = s->pin[0] && !strcmp(pin, s->pin);
         char tok[33] = "";
         int ready = s->cfg_ok;
@@ -548,8 +560,13 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
             memcpy(s->sessions[s->next_session], tok, 33);
             s->next_session = (s->next_session + 1) % SETUP_SESSIONS;
             setup_new_pin(s);  // each PIN signs in one phone
+            s->lock_round = 0;
         } else if (++s->bad_pins >= 5) {
             setup_new_pin(s);  // a new PIN appears on the TV
+            // Then a wait that doubles each round: 30 s, 1 min, 2 min ... 15 min.
+            int r = s->lock_round < 5 ? s->lock_round : 5;
+            s->lock_round++;
+            s->lock_until = now + (30L << r) > now + 900 ? now + 900 : now + (30L << r);
         }
         pthread_mutex_unlock(&s->lock);
         if (ok) {
@@ -629,8 +646,10 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
                 respond_json(resp, 200, "OK", "{\"ok\":true}");
             }
         } else if (is_req(req, "POST /api/confirm")) {
-            if (s->chat->confirm == CONFIRM_PENDING)
+            if (s->chat->confirm == CONFIRM_PENDING) {
+                s->chat->confirm_by = 1;
                 s->chat->confirm = !strncmp(body, "yes", 3) ? CONFIRM_YES : CONFIRM_NO;
+            }
             s->chat->dirty = 1;
             respond_json(resp, 200, "OK", "{\"ok\":true}");
         } else if (is_req(req, "POST /api/model")) {
@@ -679,6 +698,13 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
                 respond_json(resp, 409, "Conflict", "{\"error\":\"Claude is still answering.\"}");
             else
                 respond_json(resp, 404, "Not Found", "{\"error\":\"That chat was not found.\"}");
+        } else if (is_req(req, "POST /api/permissions")) {
+            char mode[16] = "";
+            form_get(body, "mode", mode, sizeof(mode), 0);
+            if (prefs_set_mode(mode) == 0)
+                respond_json(resp, 200, "OK", "{\"ok\":true}");
+            else
+                respond_json(resp, 400, "Bad Request", "{\"error\":\"Unknown permission mode.\"}");
         } else if (is_req(req, "POST /api/logout")) {
             s->want_logout = 1;
             respond_json(resp, 200, "OK", "{\"ok\":true}");
@@ -760,7 +786,13 @@ static void *server_main(void *arg)
         int fd = sceNetAccept(s->listen_fd, (OrbisNetSockaddr *)&peer, &plen);
         if (fd < 0)
             break;  // aborted by setup_stop
-        serve_client(s, fd);
+        // Home network only: drop anything not from a private address, so a
+        // router port forward or DMZ cannot expose the page to the internet.
+        const unsigned char *ip = (const unsigned char *)&peer.addr;
+        int local = ip[0] == 10 || ip[0] == 127 || (ip[0] == 192 && ip[1] == 168) ||
+                    (ip[0] == 172 && (ip[1] & 0xf0) == 16) || (ip[0] == 169 && ip[1] == 254);
+        if (local)
+            serve_client(s, fd);
         sceNetSocketClose(fd);
     }
     sceNetSocketClose(s->listen_fd);

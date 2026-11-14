@@ -1,3 +1,4 @@
+/* Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved. */
 :root{--bg:#faf9f5;--side:#f0eee6;--text:#141413;--dim:#6f6d66;--faint:#9a988f;--user:#efece3;--comp:#ffffff;
 --border:#e3e0d6;--accent:#d97757;--code:#f2efe7;--codetext:#3d3a33;--tool:#f3f1ea;--notice:#b5642c;--panel:#ffffff;
 color-scheme:light dark}
@@ -89,3 +90,13 @@ border-radius:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cur
 .av{width:36px;height:36px;border-radius:50%;background:#5a4a42;color:#fff7f0;display:grid;place-items:center;font-weight:600;flex:none}
 .pn{min-width:0}.pn div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lo{background:none;border:1px solid var(--border);color:var(--text);border-radius:12px;padding:10px 12px;font:inherit;cursor:pointer}
+
+.mic{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;margin-right:6px}
+.mic.on{background:var(--accent);color:#fff;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.6}}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:22px auto 0;max-width:560px}
+.chip{border:1px solid var(--border);background:var(--comp);color:var(--text);border-radius:999px;padding:8px 14px;font:inherit;font-size:14px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.pm{display:block;width:calc(100% - 24px);margin:4px 12px 10px}
+.mt{font-size:14px;line-height:1.5;margin:0 0 10px;color:var(--text)}.mt code{font-size:12px;word-break:break-all}
+#mh .card{max-height:88vh;overflow:auto}

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 // Saved chats in /data/claude/chats: a readable .txt and a .json that keeps
 // what is needed to continue the chat (API history and PC bridge session key).
 #pragma once

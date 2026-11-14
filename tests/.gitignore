@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved.
 test_host
 preview
 *.png
+sqlite3.o
+tool_check.log
