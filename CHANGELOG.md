@@ -1,5 +1,10 @@
 # Changelog
 
+## 01.21 (2026-11-14)
+
+- Fix: 01.10 and 01.20 could stop on the start screen. The app linked system libraries (BGFT, AppInstUtil, Random) that apps do not get at start; they are now loaded only when a tool needs them.
+- Startup steps are shown on screen and written to /data/claude/boot.log, so a stuck start can be traced.
+
 ## 01.20 (2026-11-14)
 
 - New look based on the Claude desktop app: sidebar, centered chat, message box at the bottom, serif replies, drawn controller buttons.

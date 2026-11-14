@@ -156,20 +156,41 @@ int plat_jailbroken(void) { return g_jailbroken; }
 
 // ---- random -------------------------------------------------------------
 
-int sceRandomGetRandomNumber(void *buf, size_t size);
+// System libraries that apps do not get at start are loaded on first use and
+// looked up by name, so a missing one only disables that feature instead of
+// stopping the app from starting.
+static void *sys_sym(const char *lib, const char *name)
+{
+    char path[96];
+    snprintf(path, sizeof(path), "/system/common/lib/%s", lib);
+    int h = (int)sceKernelLoadStartModule(path, 0, NULL, 0, NULL, NULL);
+    if (h < 0) {
+        snprintf(path, sizeof(path), "/system/priv/lib/%s", lib);
+        h = (int)sceKernelLoadStartModule(path, 0, NULL, 0, NULL, NULL);
+    }
+    if (h < 0)
+        return NULL;
+    void *addr = NULL;
+    if (sceKernelDlsym(h, name, &addr) < 0)
+        return NULL;
+    return addr;
+}
 
 int plat_random(void *buf, size_t n)
 {
-    static int loaded;
-    if (!loaded) {
-        sceSysmoduleLoadModule(ORBIS_SYSMODULE_RANDOM);
-        loaded = 1;
+    static int (*get_random)(void *, size_t);
+    static int tried;
+    if (!tried) {
+        tried = 1;
+        get_random = (int (*)(void *, size_t))sys_sym("libSceRandom.sprx", "sceRandomGetRandomNumber");
     }
+    if (!get_random)
+        return -1;
     // The system call accepts at most 64 bytes at a time.
     unsigned char *p = buf;
     while (n) {
         size_t k = n > 64 ? 64 : n;
-        if (sceRandomGetRandomNumber(p, k) < 0)
+        if (get_random(p, k) < 0)
             return -1;
         p += k;
         n -= k;
@@ -202,21 +223,30 @@ int plat_set_fan_threshold(int celsius, StrBuf *out)
 
 // ---- pkg install / uninstall ---------------------------------------------
 
-#include <orbis/AppInstUtil.h>
 #include <orbis/Bgft.h>
 
 static int bgft_ready, appinst_ready;
+static int (*p_bgft_init)(OrbisBgftInitParams *);
+static int (*p_bgft_register)(OrbisBgftDownloadParamEx *, OrbisBgftTaskId *);
+static int (*p_bgft_start)(OrbisBgftTaskId);
+static int (*p_appinst_init)(void);
+static int (*p_appinst_uninstall)(const char *);
 
 static int bgft_init(void)
 {
     if (bgft_ready)
         return 0;
-    if ((int)sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_BGFT) < 0)
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_BGFT);
+    p_bgft_init = (int (*)(OrbisBgftInitParams *))sys_sym("libSceBgft.sprx", "sceBgftServiceIntInit");
+    p_bgft_register = (int (*)(OrbisBgftDownloadParamEx *, OrbisBgftTaskId *))sys_sym(
+        "libSceBgft.sprx", "sceBgftServiceIntDownloadRegisterTaskByStorageEx");
+    p_bgft_start = (int (*)(OrbisBgftTaskId))sys_sym("libSceBgft.sprx", "sceBgftServiceDownloadStartTask");
+    if (!p_bgft_init || !p_bgft_register || !p_bgft_start)
         return -1;
     static OrbisBgftInitParams ip;
     ip.heapSize = 0x100000;
     ip.heap = malloc(ip.heapSize);
-    if (!ip.heap || sceBgftServiceIntInit(&ip) < 0)
+    if (!ip.heap || p_bgft_init(&ip) < 0)
         return -1;
     bgft_ready = 1;
     return 0;
@@ -226,8 +256,9 @@ static int appinst_init(void)
 {
     if (appinst_ready)
         return 0;
-    sceKernelLoadStartModule("/system/common/lib/libSceAppInstUtil.sprx", 0, NULL, 0, NULL, NULL);
-    if (sceAppInstUtilInitialize() < 0)
+    p_appinst_init = (int (*)(void))sys_sym("libSceAppInstUtil.sprx", "sceAppInstUtilInitialize");
+    p_appinst_uninstall = (int (*)(const char *))sys_sym("libSceAppInstUtil.sprx", "sceAppInstUtilAppUnInstall");
+    if (!p_appinst_init || !p_appinst_uninstall || p_appinst_init() < 0)
         return -1;
     appinst_ready = 1;
     return 0;
@@ -254,7 +285,7 @@ int plat_install_pkg(const char *path, const char *content_id, const char *pkg_t
     p.params.packageSize = size;
     p.slot = 0;
     OrbisBgftTaskId task = -1;
-    int r = sceBgftServiceIntDownloadRegisterTaskByStorageEx(&p, &task);
+    int r = p_bgft_register(&p, &task);
     if (r == (int)0x80990088) {
         sb_append(out, "This package is already installed (or an install of it is queued).");
         return 1;
@@ -263,7 +294,7 @@ int plat_install_pkg(const char *path, const char *content_id, const char *pkg_t
         sb_appendf(out, "The installer refused the package (0x%08X).", (unsigned)r);
         return 1;
     }
-    r = sceBgftServiceDownloadStartTask(task);
+    r = p_bgft_start(task);
     if (r < 0) {
         sb_appendf(out, "Could not start the install task (0x%08X).", (unsigned)r);
         return 1;
@@ -278,7 +309,7 @@ int plat_uninstall_app(const char *title_id, StrBuf *out)
         sb_append(out, "Could not start the system app installer service.");
         return 1;
     }
-    int r = sceAppInstUtilAppUnInstall(title_id);
+    int r = p_appinst_uninstall(title_id);
     if (r < 0) {
         sb_appendf(out, "Uninstall failed (0x%08X).", (unsigned)r);
         return 1;

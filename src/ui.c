@@ -530,10 +530,7 @@ static void draw_picker(Canvas *c)
 
 static const char *greeting(void)
 {
-    time_t t = time(NULL);
-    struct tm *tm = localtime(&t);
-    int h = tm ? tm->tm_hour : 12;
-    return h < 5 ? "Up late?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+    return "What can I help with?";
 }
 
 static void draw_empty(Canvas *c)

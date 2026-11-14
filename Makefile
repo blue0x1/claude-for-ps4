@@ -3,7 +3,7 @@
 #        make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 TITLE       := Claude for PS4
-VERSION     := 01.20
+VERSION     := 01.21
 TITLE_ID    := CLDE00001
 CONTENT_ID  := IV0000-CLDE00001_00-CLAUDEFORPS40000
 
@@ -13,7 +13,7 @@ export OO_PS4_TOOLCHAIN
 
 LIBS        := -lc -lkernel -lc++ -lSceUserService -lSceVideoOut -lSceAudioOut -lScePad \
                -lSceSysmodule -lSceFreeType -lSceNet -lSceSsl -lSceHttp \
-               -lSceCommonDialog -lSceImeDialog -lSceNetCtl -lSceSystemService -lSceBgft -lSceAppInstUtil -lSceRandom -lSDL2
+               -lSceCommonDialog -lSceImeDialog -lSceNetCtl -lSceSystemService -lSDL2
 
 ASSETS      := $(wildcard assets/fonts/*)
 LIBMODULES  := $(wildcard sce_module/*)

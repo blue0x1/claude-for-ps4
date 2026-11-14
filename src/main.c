@@ -22,6 +22,7 @@
 #include "plat.h"
 #include "ui.h"
 #include "setup.h"
+#include "version.h"
 
 #include <orbis/NetCtl.h>
 
@@ -179,6 +180,43 @@ static void handle_picker(unsigned pressed)
         g_chat.dirty = 1;
 }
 
+// ---- startup log ----------------------------------------------------------
+// Each startup step is written to /data/claude/boot.log (and shown on screen)
+// so a hang on a real console can be traced over FTP.
+
+static FILE *g_boot_log;
+static Canvas *g_boot_canvas;
+static SDL_Window *g_boot_win;
+
+static void boot_step(const char *step)
+{
+    if (!g_boot_log) {
+        mkdir("/data/claude", 0777);
+        g_boot_log = fopen("/data/claude/boot.log", "w");
+        if (g_boot_log)
+            fprintf(g_boot_log, "Claude for PS4 %s\n", APP_VERSION);
+    }
+    if (g_boot_log) {
+        fprintf(g_boot_log, "%s\n", step);
+        fflush(g_boot_log);
+    }
+    if (g_boot_canvas && g_body.cache_size) {
+        canvas_fill(g_boot_canvas, (Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG, NULL);
+        draw_center(g_boot_canvas, &g_body, 500, "Starting Claude...", COL_TEXT);
+        draw_center(g_boot_canvas, &g_small, 560, step, COL_DIM);
+        SDL_UpdateWindowSurface(g_boot_win);
+    }
+}
+
+static void boot_done(void)
+{
+    if (g_boot_log) {
+        fprintf(g_boot_log, "ready\n");
+        fclose(g_boot_log);
+        g_boot_log = NULL;
+    }
+}
+
 static void fatal_screen(Canvas *c, SDL_Window *win, const char *msg)
 {
     for (;;) {
@@ -193,11 +231,13 @@ static void fatal_screen(Canvas *c, SDL_Window *win, const char *msg)
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
+    boot_step("user service");
 
     OrbisUserServiceInitializeParams up = { ORBIS_KERNEL_PRIO_FIFO_LOWEST };
     sceUserServiceInitialize(&up);
     sceUserServiceGetInitialUser(&g_user_id);
 
+    boot_step("video");
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
         return 1;
     SDL_Window *win = SDL_CreateWindow("Claude", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -210,6 +250,9 @@ int main(void)
     Canvas canvas = { (uint32_t *)surf->pixels, surf->w, surf->h, surf->pitch / 4,
                       surf->format->Rshift, surf->format->Gshift, surf->format->Bshift,
                       surf->format->Amask };
+    g_boot_canvas = &canvas;
+    g_boot_win = win;
+    boot_step("fonts");
 
     unsigned char *sans = read_file("/app0/assets/fonts/DejaVuSans.ttf");
     unsigned char *serif = read_file("/app0/assets/fonts/DejaVuSerif.ttf");
@@ -226,23 +269,30 @@ int main(void)
     if (!mono || !font_init(&g_mono, mono, 27))
         font_init(&g_mono, sans, 27);
     ui_init();
+    boot_step("chat state");
 
     chat_init(&g_chat);
     setup_init(&g_setup, &g_chat);
+    boot_step("GoldHEN jailbreak");
     plat_jailbreak();
+    boot_step("network");
 
     char err[200];
     if (net_init(err, sizeof(err)) < 0)
         fatal_screen(&canvas, win, err);
+    boot_step("keyboard");
     if (ime_init() < 0)
         chat_add(&g_chat, ROLE_NOTICE, "Could not load the on-screen keyboard module.");
 
+    boot_step("controller");
     scePadInit();
     int pad = scePadOpen(g_user_id, 0, 0, NULL);
 
+    boot_step("settings");
     sceNetCtlInit();
     load_config();
     check_clock();
+    boot_step("phone page");
     if (!g_cfg_ok)
         open_phone_setup();
     else
@@ -251,6 +301,7 @@ int main(void)
     unsigned prev_buttons = 0;
     int was_busy = 0, frame = 0;
     char input[8192];
+    boot_done();
     g_chat.dirty = 1;
 
     for (;; frame++) {
