@@ -11,6 +11,7 @@
 #include <SDL2/SDL.h>
 #include <orbis/Pad.h>
 #include <orbis/Sysmodule.h>
+#include <orbis/SystemService.h>
 #include <orbis/UserService.h>
 
 #include "chat.h"
@@ -252,6 +253,8 @@ int main(void)
                       surf->format->Amask };
     g_boot_canvas = &canvas;
     g_boot_win = win;
+    // The system start screen stays on top of the app until it is hidden.
+    sceSystemServiceHideSplashScreen();
     boot_step("fonts");
 
     unsigned char *sans = read_file("/app0/assets/fonts/DejaVuSans.ttf");
@@ -302,6 +305,7 @@ int main(void)
     int was_busy = 0, frame = 0;
     char input[8192];
     boot_done();
+    sceSystemServiceHideSplashScreen();
     g_chat.dirty = 1;
 
     for (;; frame++) {

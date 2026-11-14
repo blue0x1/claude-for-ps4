@@ -3,7 +3,7 @@
 #        make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 TITLE       := Claude for PS4
-VERSION     := 01.21
+VERSION     := 01.22
 TITLE_ID    := CLDE00001
 CONTENT_ID  := IV0000-CLDE00001_00-CLAUDEFORPS40000
 
@@ -47,7 +47,7 @@ all: $(CONTENT_ID).pkg
 $(CONTENT_ID).pkg: pkg.gp4
 	$(BIN)/PkgTool.Core pkg_build $< .
 
-pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_sys/pic1.png $(LIBMODULES) $(ASSETS)
+pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png $(LIBMODULES) $(ASSETS)
 	$(BIN)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "$^"
 
 sce_sys/param.sfo: Makefile
