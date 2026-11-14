@@ -1,19 +1,21 @@
 <!-- Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved. -->
-# Claude for PS4
+<h1 align="center">Claude for PS4</h1>
 
 <p align="center">
-  <img src="sce_sys/icon0.png" width="120" alt="Claude for PS4 icon"/>
+  <img src="sce_sys/icon0.png" width="180" alt="Claude for PS4 icon"/>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-01.26-orange?style=flat-square" alt="Version"/>
-  <img src="https://img.shields.io/badge/platform-PS4%20%28GoldHEN%29-blue?style=flat-square" alt="Platform"/>
+  <img src="https://img.shields.io/badge/PlayStation%204-GoldHEN-003087?style=flat-square&logo=playstation&logoColor=white" alt="Platform"/>
   <img src="https://img.shields.io/badge/firmware-5.05%2B-lightgrey?style=flat-square" alt="Firmware"/>
-  <img src="https://img.shields.io/badge/license-All%20Rights%20Reserved-red?style=flat-square" alt="License"/>
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"/>
 </p>
 
-> Unofficial Claude app for the PS4. Not affiliated with Anthropic or Sony.  
-> Made by **Chokri Hammedi** ([blue0x1](https://github.com/blue0x1))
+<p align="center">
+  Unofficial Claude app for the PS4. Not affiliated with Anthropic or Sony.<br/>
+  Made by <strong>Chokri Hammedi</strong> (<a href="https://github.com/blue0x1">blue0x1</a>)
+</p>
 
 
 ## What it does
@@ -84,6 +86,8 @@ make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 ```
 
 
-## Licenses
+## License
 
-DejaVu Sans font: `assets/fonts/DejaVu-LICENSE.txt` · stb_truetype: public domain / MIT · QR codes: Project Nayuki (MIT) · GoldHEN jailbreak call: GoldHEN Plugins SDK (MIT)
+MIT - see [LICENSE](LICENSE)
+
+Third-party: DejaVu Sans font (`assets/fonts/DejaVu-LICENSE.txt`), stb_truetype (public domain / MIT), QR codes by Project Nayuki (MIT), GoldHEN jailbreak call based on GoldHEN Plugins SDK (MIT).
