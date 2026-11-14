@@ -46,12 +46,18 @@ The bridge prints its address. Open `http://127.0.0.1:8787` on the PC to pair, o
 
 | Feature | How to ask |
 |---|---|
+| Chat | Ask anything, get answers on the TV or your phone |
 | Manage files | "What's using my storage?" / "delete the leftover files" |
 | Save backups | "Back up my saves" / "restore from yesterday" |
 | Install from PC | Put .pkg files in `~/PS4/pkg`, say "install the new games" |
-| GoldHEN | "Turn on the 60 FPS plugin for Bloodborne" |
+| Install .pkg | "Install the pkg on my USB" |
+| Uninstall apps | "Remove this game" (save data stays) |
+| GoldHEN | "Turn on the 60 FPS plugin for Bloodborne" / "list cheats for this game" |
 | Fan & health | "Is my PS4 running hot?" / "use quiet fan mode" |
+| Screenshots | "What's on my screen?" (take a screenshot with SHARE first) |
+| Home folders | "Make a Racing folder with GTA and NFS" |
 | Memory | "Remember that USB 0 is for backups" |
+| Permission modes | Full, Trusted, Read-only, Kid - set from the phone menu |
 | Update check | "Is there an app update?" (bridge only) |
 
 
