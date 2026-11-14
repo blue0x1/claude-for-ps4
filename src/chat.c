@@ -1,0 +1,128 @@
+// Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>
+#include "chat.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+void chat_init(Chat *c)
+{
+    memset(c, 0, sizeof(*c));
+    pthread_mutex_init(&c->lock, NULL);
+}
+
+void chat_clear(Chat *c)
+{
+    pthread_mutex_lock(&c->lock);
+    for (int i = 0; i < c->count; i++) {
+        sb_free(&c->msgs[i].text);
+        free(c->msgs[i].line_start);
+        free(c->msgs[i].line_len);
+    }
+    c->count = 0;
+    pthread_mutex_unlock(&c->lock);
+    chat_api_truncate(c, 0);
+    c->dirty = 1;
+}
+
+int chat_add(Chat *c, Role role, const char *text)
+{
+    pthread_mutex_lock(&c->lock);
+    if (c->count == c->cap) {
+        int cap = c->cap ? c->cap * 2 : 16;
+        Msg *m = realloc(c->msgs, sizeof(Msg) * (size_t)cap);
+        if (!m)
+            abort();
+        c->msgs = m;
+        c->cap = cap;
+    }
+    Msg *m = &c->msgs[c->count];
+    memset(m, 0, sizeof(*m));
+    m->role = role;
+    sb_init(&m->text);
+    sb_append(&m->text, text ? text : "");
+    int idx = c->count++;
+    c->dirty = 1;
+    pthread_mutex_unlock(&c->lock);
+    return idx;
+}
+
+void chat_append(Chat *c, int idx, const char *text, size_t n)
+{
+    pthread_mutex_lock(&c->lock);
+    if (idx >= 0 && idx < c->count) {
+        sb_appendn(&c->msgs[idx].text, text, n);
+        c->dirty = 1;
+    }
+    pthread_mutex_unlock(&c->lock);
+}
+
+void chat_api_push(Chat *c, const char *json)
+{
+    pthread_mutex_lock(&c->lock);
+    if (c->api_count == c->api_cap) {
+        int cap = c->api_cap ? c->api_cap * 2 : 16;
+        char **a = realloc(c->api, sizeof(char *) * (size_t)cap);
+        if (!a)
+            abort();
+        c->api = a;
+        c->api_cap = cap;
+    }
+    c->api[c->api_count++] = strdup(json);
+    pthread_mutex_unlock(&c->lock);
+}
+
+void chat_api_truncate(Chat *c, int count)
+{
+    pthread_mutex_lock(&c->lock);
+    while (c->api_count > count)
+        free(c->api[--c->api_count]);
+    pthread_mutex_unlock(&c->lock);
+}
+
+void chat_build_request(Chat *c, const Config *cfg, const char *tools_json, StrBuf *out)
+{
+    sb_append(out, "{\"model\":");
+    sb_append_json_string(out, cfg->model);
+    sb_appendf(out, ",\"max_tokens\":%d,\"stream\":true", cfg->max_tokens);
+    // Cache the growing conversation prefix (cheaper tool loops).
+    sb_append(out, ",\"cache_control\":{\"type\":\"ephemeral\"}");
+    if (cfg->effort[0]) {
+        sb_append(out, ",\"output_config\":{\"effort\":");
+        sb_append_json_string(out, cfg->effort);
+        sb_append(out, "}");
+    }
+    if (config_use_fallbacks(cfg))
+        sb_append(out, ",\"fallbacks\":\"default\"");
+    if (cfg->system[0]) {
+        sb_append(out, ",\"system\":");
+        sb_append_json_string(out, cfg->system);
+    }
+    if (tools_json && *tools_json) {
+        sb_append(out, ",\"tools\":");
+        sb_append(out, tools_json);
+    }
+    sb_append(out, ",\"messages\":[");
+    pthread_mutex_lock(&c->lock);
+    for (int i = 0; i < c->api_count; i++) {
+        if (i)
+            sb_appendc(out, ',');
+        sb_append(out, c->api[i]);
+    }
+    pthread_mutex_unlock(&c->lock);
+    sb_append(out, "]}");
+}
+
+int chat_ask_confirm(Chat *c, const char *text)
+{
+    snprintf(c->confirm_text, sizeof(c->confirm_text), "%s", text);
+    c->confirm = CONFIRM_PENDING;
+    c->dirty = 1;
+    while (c->confirm == CONFIRM_PENDING && !c->cancel)
+        usleep(20 * 1000);
+    int yes = c->confirm == CONFIRM_YES && !c->cancel;
+    c->confirm = CONFIRM_NONE;
+    c->dirty = 1;
+    return yes;
+}

@@ -1,0 +1,28 @@
+# Claude for PS4 settings.
+# Copy this file to the root of a USB drive as claude.ini, or to
+# /data/claude/claude.ini on the PS4 (for example over GoldHEN FTP).
+# The app reads the first one it finds: /mnt/usb0, /mnt/usb1, /data/claude, /data.
+
+# Your Anthropic API key (console.anthropic.com). Required.
+api_key=sk-ant-REPLACE-ME
+
+# Model. Default: claude-opus-5-5
+model=claude-opus-5-5
+
+# Longest reply in tokens. Default: 16000
+max_tokens=16000
+
+# Reasoning effort: low, medium, high, xhigh, max. Empty = API default (medium on Opus 5.5).
+# low is faster and cheaper for plain chat.
+effort=
+
+# Custom system prompt. Use \n for a new line. Leave out to use the built-in one.
+# system=You are a helpful assistant.
+
+# Verify the api.anthropic.com certificate. Keep 1. Set 0 only if every
+# request fails with an SSL error because the PS4 certificate store is too old.
+# With 0 your API key could be read by anyone who can intercept your network.
+tls_verify=1
+
+# Server-side fallback model when a request is declined: auto, 1 or 0.
+fallbacks=auto

@@ -1,0 +1,18 @@
+# Host tests and UI preview (run from the repo root: make -C tests)
+STB ?= $(OO_PS4_TOOLCHAIN)/include/stb
+SRC := ../src
+CC  ?= gcc
+CFLAGS := -g -O1 -Wall -Wno-unused-result -I$(STB)
+COMMON := $(SRC)/chat.c $(SRC)/config.c $(SRC)/font.c $(SRC)/json.c $(SRC)/layout.c \
+          $(SRC)/strbuf.c $(SRC)/plat_stub.c
+
+.PHONY: all test preview
+all: test preview
+
+test:
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o test_host test_host.c $(COMMON) $(SRC)/stream.c $(SRC)/tools.c -lpthread -lm
+	cd .. && ASAN_OPTIONS=detect_leaks=0 tests/test_host
+
+preview:
+	$(CC) $(CFLAGS) -w -o preview preview.c $(COMMON) $(SRC)/ui.c -lpthread -lm
+	cd .. && tests/preview tests
