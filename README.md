@@ -15,7 +15,6 @@
 > Unofficial Claude app for the PS4. Not affiliated with Anthropic or Sony.  
 > Made by **Chokri Hammedi** ([blue0x1](https://github.com/blue0x1))
 
----
 
 ## What it does
 
@@ -23,7 +22,6 @@ Chat with Claude on your PS4. Claude can also control the console - manage files
 
 You can also chat from your phone - the PS4 hosts a web page on your home network.
 
----
 
 ## Install
 
@@ -31,7 +29,6 @@ You can also chat from your phone - the PS4 hosts a web page on your home networ
 2. Launch **Claude for PS4** - it shows a QR code and PIN on first start.
 3. Scan with your phone, sign in with the PIN, and pick your sign-in method.
 
----
 
 ## Sign in
 
@@ -44,7 +41,6 @@ python3 tools/claude-bridge.py
 ```
 The bridge prints its address. Open `http://127.0.0.1:8787` on the PC to pair, or enter the address and PIN in the app.
 
----
 
 ## What Claude can do
 
@@ -58,7 +54,6 @@ The bridge prints its address. Open `http://127.0.0.1:8787` on the PC to pair, o
 | Memory | "Remember that USB 0 is for backups" |
 | Update check | "Is there an app update?" (bridge only) |
 
----
 
 ## Controls
 
@@ -73,7 +68,6 @@ The bridge prints its address. Open `http://127.0.0.1:8787` on the PC to pair, o
 | L2 | About |
 | D-pad Left | Saved chats |
 
----
 
 ## Build
 
@@ -83,7 +77,6 @@ Needs clang, ld.lld and the [OpenOrbis toolchain](https://github.com/OpenOrbis/O
 make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 ```
 
----
 
 ## Licenses
 
