@@ -18,6 +18,7 @@ need API key mode.
 import argparse
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -32,6 +33,8 @@ WORK_DIR = STATE_DIR / "work"
 TOKEN_FILE = STATE_DIR / "token"
 SESSIONS_FILE = STATE_DIR / "sessions.json"
 MAX_BODY = 4 * 1024 * 1024
+EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,62}$")
 
 sessions_lock = threading.Lock()
 
@@ -155,8 +158,16 @@ class Handler(BaseHTTPRequestHandler):
 
         cmd = [cfg.claude, "-p", "--output-format", "stream-json", "--verbose",
                "--include-partial-messages", "--tools", ""]
-        if cfg.model:
-            cmd += ["--model", cfg.model]
+        # Model and effort picked on the PS4 win; "default" keeps --model
+        # from this script, or Claude Code's own choice.
+        model = body.get("model")
+        if not (isinstance(model, str) and model != "default" and MODEL_RE.match(model)):
+            model = cfg.model
+        if model:
+            cmd += ["--model", model]
+        effort = (body.get("output_config") or {}).get("effort") if isinstance(body.get("output_config"), dict) else None
+        if effort in EFFORTS and cfg.effort_flag:
+            cmd += ["--effort", effort]
         if session_id:
             cmd += ["--resume", session_id]
         system = body.get("system")
@@ -250,7 +261,7 @@ def main():
     ap = argparse.ArgumentParser(description="Claude for PS4 PC bridge (uses your Claude Code login)")
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--bind", default="0.0.0.0", help="address to listen on (default all)")
-    ap.add_argument("--model", default="", help="Claude Code model alias or id, for example opus or sonnet")
+    ap.add_argument("--model", default="", help="model used when the PS4 picks 'default' (alias or id, e.g. opus)")
     ap.add_argument("--claude", default="claude", help="path to the claude CLI")
     ap.add_argument("--new-code", action="store_true", help="make a new pairing code")
     cfg = ap.parse_args()
@@ -260,6 +271,14 @@ def main():
         sys.exit("Claude Code CLI not found. Install it (npm install -g @anthropic-ai/claude-code), "
                  "run `claude`, and sign in with /login.")
     cfg.claude = found
+    try:
+        help_text = subprocess.run([found, "--help"], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        help_text = ""
+    cfg.effort_flag = "--effort" in help_text
+    if not cfg.effort_flag:
+        print("Note: this Claude Code version has no --effort option; effort picked on the PS4 is ignored. "
+              "Update Claude Code to use it.")
     cfg.token = get_token(cfg.new_code)
     WORK_DIR.mkdir(parents=True, exist_ok=True)
 

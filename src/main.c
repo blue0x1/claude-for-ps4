@@ -27,7 +27,7 @@
 
 
 
-Font g_body, g_small, g_title;
+Font g_body, g_small, g_tiny, g_title, g_serif, g_serif_b, g_head, g_hero, g_mono;
 Chat g_chat;
 Config g_cfg;
 int  g_cfg_ok;
@@ -135,6 +135,50 @@ static void check_clock(void)
                                        "set it in Settings > Date and Time.");
 }
 
+// ---- model and effort picker ----------------------------------------------
+
+static void open_picker(void)
+{
+    g_picker.open = 1;
+    g_picker.col = 0;
+    int cur = picker_current(0);
+    g_picker.row = cur < 0 ? 0 : cur;
+    g_chat.dirty = 1;
+}
+
+static void apply_choice(int col, const char *value)
+{
+    if (col == 1)
+        snprintf(g_cfg.effort, sizeof(g_cfg.effort), "%s", value);
+    else if (g_cfg.bridge)
+        snprintf(g_cfg.bridge_model, sizeof(g_cfg.bridge_model), "%s", value);
+    else
+        snprintf(g_cfg.model, sizeof(g_cfg.model), "%s", value);
+    if (config_save(&g_cfg) != 0)
+        chat_add(&g_chat, ROLE_NOTICE, "Could not save the choice to /data/claude/claude.ini. It is used until the app closes.");
+    setup_set_config(&g_setup, &g_cfg, g_cfg_ok);
+}
+
+static void handle_picker(unsigned pressed)
+{
+    int n = picker_count(g_picker.col);
+    if (pressed & ORBIS_PAD_BUTTON_UP)
+        g_picker.row = g_picker.row > 0 ? g_picker.row - 1 : n - 1;
+    if (pressed & ORBIS_PAD_BUTTON_DOWN)
+        g_picker.row = g_picker.row < n - 1 ? g_picker.row + 1 : 0;
+    if (pressed & (ORBIS_PAD_BUTTON_LEFT | ORBIS_PAD_BUTTON_RIGHT)) {
+        g_picker.col = !g_picker.col;
+        int cur = picker_current(g_picker.col);
+        g_picker.row = cur < 0 ? 0 : cur;
+    }
+    if (pressed & ORBIS_PAD_BUTTON_CROSS)
+        apply_choice(g_picker.col, picker_value(g_picker.col, g_picker.row));
+    if (pressed & (ORBIS_PAD_BUTTON_CIRCLE | ORBIS_PAD_BUTTON_R2))
+        g_picker.open = 0;
+    if (pressed)
+        g_chat.dirty = 1;
+}
+
 static void fatal_screen(Canvas *c, SDL_Window *win, const char *msg)
 {
     for (;;) {
@@ -167,10 +211,21 @@ int main(void)
                       surf->format->Rshift, surf->format->Gshift, surf->format->Bshift,
                       surf->format->Amask };
 
-    unsigned char *font_data = read_file("/app0/assets/fonts/DejaVuSans.ttf");
-    if (!font_data || !font_init(&g_body, font_data, 34) || !font_init(&g_small, font_data, 28) ||
-        !font_init(&g_title, font_data, 44))
+    unsigned char *sans = read_file("/app0/assets/fonts/DejaVuSans.ttf");
+    unsigned char *serif = read_file("/app0/assets/fonts/DejaVuSerif.ttf");
+    unsigned char *serif_b = read_file("/app0/assets/fonts/DejaVuSerif-Bold.ttf");
+    unsigned char *mono = read_file("/app0/assets/fonts/DejaVuSansMono.ttf");
+    if (!sans || !font_init(&g_body, sans, 32) || !font_init(&g_small, sans, 27) || !font_init(&g_tiny, sans, 23) ||
+        !font_init(&g_title, sans, 44))
         fatal_screen(&canvas, win, "Font missing");
+    // Fall back to the sans font if an extra font is missing.
+    if (!serif || !font_init(&g_serif, serif, 34) || !font_init(&g_hero, serif, 64))
+        font_init(&g_serif, sans, 33), font_init(&g_hero, sans, 60);
+    if (!serif_b || !font_init(&g_serif_b, serif_b, 34) || !font_init(&g_head, serif_b, 42))
+        font_init(&g_serif_b, sans, 33), font_init(&g_head, sans, 42);
+    if (!mono || !font_init(&g_mono, mono, 27))
+        font_init(&g_mono, sans, 27);
+    ui_init();
 
     chat_init(&g_chat);
     setup_init(&g_setup, &g_chat);
@@ -219,7 +274,11 @@ int main(void)
             unsigned b = pd.buttons, pressed = b & ~prev_buttons;
             prev_buttons = b;
 
-            if (g_setup.shown && g_chat.confirm != CONFIRM_PENDING) {
+            if (g_picker.open && g_chat.confirm != CONFIRM_PENDING && !g_setup.shown) {
+                handle_picker(pressed);
+                pressed = 0;  // no scrolling or other actions while the picker is open
+                b = 0;
+            } else if (g_setup.shown && g_chat.confirm != CONFIRM_PENDING) {
                 if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
                     g_setup.shown = 0;  // the server keeps running for the phone remote
                     g_chat.dirty = 1;
@@ -232,7 +291,11 @@ int main(void)
             } else if (g_chat.busy) {
                 if (pressed & ORBIS_PAD_BUTTON_CIRCLE)
                     net_cancel(&g_chat);
+                if ((pressed & ORBIS_PAD_BUTTON_R2) && g_cfg_ok)
+                    open_picker();
             } else {
+                if ((pressed & ORBIS_PAD_BUTTON_R2) && g_cfg_ok)
+                    open_picker();
                 if ((pressed & ORBIS_PAD_BUTTON_CROSS) && g_cfg_ok)
                     ime_open(g_user_id, "Message Claude", "");
                 if (pressed & ORBIS_PAD_BUTTON_OPTIONS)
@@ -274,6 +337,8 @@ int main(void)
         }
 
         // Requests from the phone remote
+        if (setup_take_config(&g_setup, &g_cfg))
+            g_chat.dirty = 1;
         if (g_setup.want_stop) {
             g_setup.want_stop = 0;
             if (g_chat.busy)

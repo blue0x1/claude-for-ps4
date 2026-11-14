@@ -4,7 +4,7 @@ STB ?= $(OO_PS4_TOOLCHAIN)/include/stb
 SRC := ../src
 CC  ?= gcc
 CFLAGS := -g -O1 -Wall -Wno-unused-result -I$(STB)
-COMMON := $(SRC)/chat.c $(SRC)/config.c $(SRC)/font.c $(SRC)/json.c $(SRC)/layout.c \
+COMMON := $(SRC)/chat.c $(SRC)/config.c $(SRC)/font.c $(SRC)/json.c $(SRC)/layout.c $(SRC)/rich.c \
           $(SRC)/strbuf.c $(SRC)/plat_stub.c
 
 .PHONY: all test preview phone

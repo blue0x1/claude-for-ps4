@@ -20,6 +20,8 @@ void chat_init(Chat *c)
     new_conv_id(c);
 }
 
+void (*chat_free_layout)(Msg *m);
+
 void chat_clear(Chat *c)
 {
     pthread_mutex_lock(&c->lock);
@@ -27,6 +29,8 @@ void chat_clear(Chat *c)
         sb_free(&c->msgs[i].text);
         free(c->msgs[i].line_start);
         free(c->msgs[i].line_len);
+        if (chat_free_layout)
+            chat_free_layout(&c->msgs[i]);
     }
     c->count = 0;
     c->gen++;
@@ -94,7 +98,7 @@ void chat_api_truncate(Chat *c, int count)
 void chat_build_request(Chat *c, const Config *cfg, const char *tools_json, StrBuf *out)
 {
     sb_append(out, "{\"model\":");
-    sb_append_json_string(out, cfg->model);
+    sb_append_json_string(out, config_active_model(cfg));
     sb_appendf(out, ",\"max_tokens\":%d,\"stream\":true", cfg->max_tokens);
     // Cache the growing conversation prefix (cheaper tool loops).
     sb_append(out, ",\"cache_control\":{\"type\":\"ephemeral\"}");
@@ -103,7 +107,7 @@ void chat_build_request(Chat *c, const Config *cfg, const char *tools_json, StrB
         sb_append_json_string(out, cfg->effort);
         sb_append(out, "}");
     }
-    if (config_use_fallbacks(cfg))
+    if (!cfg->bridge && config_use_fallbacks(cfg))
         sb_append(out, ",\"fallbacks\":\"default\"");
     if (cfg->system[0]) {
         sb_append(out, ",\"system\":");

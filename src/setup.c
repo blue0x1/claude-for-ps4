@@ -44,6 +44,21 @@ void setup_set_config(Setup *s, const Config *c, int ok)
     pthread_mutex_unlock(&s->lock);
 }
 
+int setup_take_config(Setup *s, Config *cfg)
+{
+    int got = 0;
+    pthread_mutex_lock(&s->lock);
+    if (s->cfg_changed) {
+        snprintf(cfg->model, sizeof(cfg->model), "%s", s->cfg.model);
+        snprintf(cfg->bridge_model, sizeof(cfg->bridge_model), "%s", s->cfg.bridge_model);
+        snprintf(cfg->effort, sizeof(cfg->effort), "%s", s->cfg.effort);
+        s->cfg_changed = 0;
+        got = 1;
+    }
+    pthread_mutex_unlock(&s->lock);
+    return got;
+}
+
 int setup_take_text(Setup *s, char *text, size_t len)
 {
     int got = 0;
@@ -151,21 +166,43 @@ static void redirect(StrBuf *resp, const char *to, const char *cookie)
     respond_type(resp, 303, "See Other", "text/html", h, "");
 }
 
-static const char PAGE_HEAD[] =
-"<!doctype html><html><head><meta charset=utf-8>"
-"<meta name=viewport content='width=device-width,initial-scale=1'>"
-"<title>Claude for PS4</title><style>"
-"body{font-family:system-ui,sans-serif;background:#1f1e1d;color:#ecebe6;margin:0 auto;padding:16px;max-width:640px}"
-"h1{color:#d97757;font-size:1.4em;margin:0 0 8px}label{display:block;margin:14px 0 4px;color:#c9c7bf}"
-"input,select,textarea{width:100%;box-sizing:border-box;padding:10px;font-size:16px;border-radius:8px;"
-"border:1px solid #4a4843;background:#2b2a27;color:#ecebe6;font-family:inherit}"
-".row{display:flex;gap:12px}.row label{flex:1;padding:10px;border:1px solid #4a4843;border-radius:8px;margin:6px 0}"
-".row input{width:auto}button{margin-top:16px;width:100%;padding:14px;font-size:17px;border:0;"
-"border-radius:8px;background:#d97757;color:#1f1e1d;font-weight:600}"
-"button.alt{background:#3a3935;color:#ecebe6}"
-".hint{color:#9c9a92;font-size:.9em}.err{color:#e5a15b}fieldset{border:0;padding:0;margin:0}"
-"a{color:#d97757}"
-"</style></head><body>";
+#include "web_assets.h"
+
+static void page_head(StrBuf *html)
+{
+    sb_append(html, "<!doctype html><html><head><meta charset=utf-8>"
+                    "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
+                    "<meta name=theme-color content='#262624'>"
+                    "<title>Claude for PS4</title><style>");
+    sb_append(html, WEB_STYLE_CSS);
+    sb_append(html, "</style></head><body>");
+}
+
+static const char MARK_SVG[] =
+"<svg class=mark style='width:44px;height:44px' viewBox='0 0 30 30'><rect width=30 height=30 rx=8 fill='#d97757'/>"
+"<rect x=6 y=7 width=18 height=12 rx=4 fill='#fff7f0'/><path d='M10 19v5l5-5z' fill='#fff7f0'/>"
+"<circle cx=11 cy=13 r=1.6 fill='#d97757'/><circle cx=15 cy=13 r=1.6 fill='#d97757'/>"
+"<circle cx=19 cy=13 r=1.6 fill='#d97757'/></svg>";
+
+static void select_options(StrBuf *html, const char *const *values, const char *const *names, const char *cur)
+{
+    int found = 0;
+    for (int i = 0; values[i]; i++) {
+        int sel = !strcmp(values[i], cur);
+        found |= sel;
+        sb_appendf(html, "<option value='%s'%s>%s</option>", values[i], sel ? " selected" : "", names[i]);
+    }
+    if (!found && cur[0]) {
+        sb_append(html, "<option value='");
+        html_escape(html, cur);
+        sb_append(html, "' selected>");
+        html_escape(html, cur);
+        sb_append(html, "</option>");
+    }
+}
+
+static const char *const BRIDGE_MODEL_NAMES[] = { "PC default", "Opus", "Sonnet", "Haiku", "Fable", NULL };
+static const char *const EFFORT_LABELS[] = { "Default", "Low", "Medium", "High", "Extra high", "Max", NULL };
 
 // ---- sessions -----------------------------------------------------------
 
@@ -249,18 +286,20 @@ static int signed_in(Setup *s, const char *req)
 static void build_login(Setup *s, StrBuf *html, const char *error)
 {
     (void)s;
-    sb_append(html, PAGE_HEAD);
-    sb_append(html, "<h1>Claude for PS4</h1>");
+    page_head(html);
+    sb_append(html, "<div class=form><div class=hello style='margin-top:10vh'>");
+    sb_append(html, MARK_SVG);
+    sb_append(html, "<h2>Claude for PS4</h2><p>Sign in with the PIN on your TV.</p></div>");
     if (error) {
         sb_append(html, "<p class=err>");
         html_escape(html, error);
         sb_append(html, "</p>");
     }
-    sb_append(html, "<form method=post action=/login><label>PIN shown on the TV (press Options on the PS4)</label>"
+    sb_append(html, "<form method=post action=/login><label>PIN (press OPTIONS on the PS4 to see it)</label>"
                     "<input name=pin inputmode=numeric autocomplete=off autofocus required>"
-                    "<button type=submit>Sign in</button></form>"
+                    "<button class='btn pri' type=submit>Sign in</button></form>"
                     "<p class=hint>This page is served by your PS4 on your home network. "
-                    "It is plain HTTP, so use it on a network you trust.</p></body></html>");
+                    "It is plain HTTP, so use it on a network you trust.</p></div></body></html>");
 }
 
 static void build_form(Setup *s, StrBuf *html, const char *error)
@@ -270,76 +309,33 @@ static void build_form(Setup *s, StrBuf *html, const char *error)
     c = s->cfg;
     pthread_mutex_unlock(&s->lock);
 
-    sb_append(html, PAGE_HEAD);
-    sb_append(html, "<h1>Settings</h1>");
+    page_head(html);
+    sb_append(html, "<div class=form><p><a href=/>&larr; Back to chat</a></p><h1>Settings</h1>");
     if (error) {
         sb_append(html, "<p class=err>");
         html_escape(html, error);
         sb_append(html, "</p>");
     }
-    sb_append(html, "<form method=post action=/save>"
-                    "<label>How should the PS4 reach Claude?</label><div class=row>");
-    sb_appendf(html, "<label><input type=radio name=mode value=api %s> API key</label>",
-               c.bridge ? "" : "checked");
-    sb_appendf(html, "<label><input type=radio name=mode value=bridge %s> PC bridge (Claude account)</label></div>",
+    sb_append(html, "<form method=post action=/save><label>How should the PS4 reach Claude?</label><div class=seg>");
+    sb_appendf(html, "<label><input type=radio name=mode value=api %s> API key</label>", c.bridge ? "" : "checked");
+    sb_appendf(html, "<label><input type=radio name=mode value=bridge %s> PC bridge</label></div>",
                c.bridge ? "checked" : "");
-    sb_append(html, "<fieldset><label>API key</label>"
-                    "<input name=api_key type=password autocomplete=off placeholder='");
+    sb_append(html, "<label>API key</label><input name=api_key type=password autocomplete=off placeholder='");
     sb_append(html, c.api_key[0] ? "(saved; leave empty to keep it)" : "sk-ant-...");
-    sb_append(html, "'><p class=hint>From console.anthropic.com. Billed to your API account.</p></fieldset>"
-                    "<fieldset><label>PC bridge address</label><input name=bridge_url placeholder='http://192.168.1.50:8787' value='");
+    sb_append(html, "'><p class=hint>From console.anthropic.com. Billed to your API account.</p>"
+                    "<label>Model (API key mode)</label><select name=model>");
+    select_options(html, CONFIG_MODELS, CONFIG_MODEL_NAMES, c.model);
+    sb_append(html, "</select><label>PC bridge address</label><input name=bridge_url placeholder='http://192.168.1.50:8787' value='");
     html_escape(html, c.bridge_url);
     sb_append(html, "'><label>Bridge pairing code</label><input name=bridge_token autocomplete=off placeholder='");
     sb_append(html, c.bridge_token[0] ? "(saved; leave empty to keep it)" : "shown by claude-bridge.py");
-    sb_append(html, "'><p class=hint>Run claude-bridge.py on a PC where Claude Code is signed in to your Claude account. "
-                    "Console tools (files, apps) are off in this mode.</p></fieldset>"
-                    "<label>Model (API key mode)</label><input name=model value='");
-    html_escape(html, c.model);
-    sb_append(html, "'><label>Effort</label><select name=effort>");
-    static const char *const efforts[] = { "", "low", "medium", "high", "xhigh", "max", NULL };
-    for (int i = 0; efforts[i]; i++)
-        sb_appendf(html, "<option value='%s'%s>%s</option>", efforts[i],
-                   !strcmp(c.effort, efforts[i]) ? " selected" : "", efforts[i][0] ? efforts[i] : "default");
-    sb_append(html, "</select><button type=submit>Save to PS4</button></form>"
-                    "<p><a href=/>Back to chat</a></p></body></html>");
+    sb_append(html, "'><label>Model (PC bridge mode)</label><select name=bridge_model>");
+    select_options(html, CONFIG_BRIDGE_MODELS, BRIDGE_MODEL_NAMES, c.bridge_model);
+    sb_append(html, "</select><p class=hint>The bridge runs Claude Code on a PC signed in to your Claude account. "
+                    "Console tools (files, apps) are off in this mode.</p><label>Effort</label><select name=effort>");
+    select_options(html, CONFIG_EFFORTS, EFFORT_LABELS, c.effort);
+    sb_append(html, "</select><button class='btn pri' type=submit>Save to PS4</button></form></div></body></html>");
 }
-
-static const char REMOTE_PAGE[] =
-"<h1>Claude for PS4</h1><p class=hint id=st>Connecting...</p>"
-"<div id=log></div>"
-"<div id=cf style='display:none;border:2px solid #d97757;border-radius:8px;padding:12px;margin:12px 0'>"
-"<b>Claude wants to:</b><pre id=cft style='white-space:pre-wrap;font-family:inherit'></pre>"
-"<div class=row><button onclick=\"post('/api/confirm','yes')\">Allow</button>"
-"<button class=alt onclick=\"post('/api/confirm','no')\">Deny</button></div></div>"
-"<textarea id=t rows=3 placeholder='Message Claude'></textarea>"
-"<div class=row><button id=sb onclick=send()>Send</button>"
-"<button class=alt id=xb onclick=\"post('/api/stop','')\">Stop</button>"
-"<button class=alt onclick=\"if(confirm('Start a new chat?'))post('/api/new','')\">New chat</button></div>"
-"<p><a href=/settings>Settings</a></p>"
-"<style>.m{margin:10px 0;padding:10px 12px;border-radius:10px;white-space:pre-wrap;word-wrap:break-word}"
-".u{background:#3a3935;margin-left:15%}.a{background:#2b2a27}.n{color:#e5a15b;font-size:.9em}"
-".tl{color:#8fb3d9;font-size:.9em}</style>"
-"<script>"
-"var n=0,g=-1,busy=0,log=document.getElementById('log');"
-"function post(u,b){return fetch(u,{method:'POST',headers:{'X-Claude-Remote':'1','Content-Type':'text/plain'},body:b})"
-".then(function(r){if(r.status==401)location.reload();return r.json()}).then(function(j){if(j.error)alert(j.error);poll()})"
-".catch(function(){})}"
-"function send(){var t=document.getElementById('t');if(!t.value.trim())return;post('/api/send',t.value);t.value=''}"
-"function poll(){fetch('/api/state?n='+n+'&g='+g).then(function(r){if(r.status==401){location.reload();return}return r.json()})"
-".then(function(j){if(!j)return;if(j.gen!=g){g=j.gen;n=0;log.innerHTML=''}"
-"var atEnd=window.innerHeight+window.scrollY>=document.body.scrollHeight-40;"
-"for(var i=0;i<j.msgs.length;i++){var k=j.from+i,d=log.children[k];"
-"if(!d){d=document.createElement('div');log.appendChild(d)}"
-"d.className='m '+j.msgs[i].r;d.textContent=j.msgs[i].t}"
-"n=j.count;busy=j.busy;"
-"document.getElementById('st').textContent=!j.ready?'Not set up yet: open Settings.':busy?'Claude is working...':'Ready';"
-"document.getElementById('sb').disabled=busy||!j.ready;document.getElementById('xb').disabled=!busy;"
-"var cf=document.getElementById('cf');if(j.confirm!==null){cf.style.display='block';"
-"document.getElementById('cft').textContent=j.confirm}else cf.style.display='none';"
-"if(atEnd&&j.msgs.length)window.scrollTo(0,document.body.scrollHeight)})"
-".catch(function(){document.getElementById('st').textContent='PS4 not reachable'})}"
-"poll();setInterval(poll,1000);"
-"</script></body></html>";
 
 static int query_int(const char *req, const char *key, int dflt)
 {
@@ -363,7 +359,10 @@ static void build_state(Setup *s, const char *req, StrBuf *json)
     Chat *c = s->chat;
     int have = query_int(req, "n", 0), gen = query_int(req, "g", -1);
     pthread_mutex_lock(&s->lock);
-    int ready = s->cfg_ok;
+    int ready = s->cfg_ok, bridge = s->cfg.bridge;
+    char model[96], effort[16];
+    snprintf(model, sizeof(model), "%s", config_active_model(&s->cfg));
+    snprintf(effort, sizeof(effort), "%s", s->cfg.effort);
     pthread_mutex_unlock(&s->lock);
     pthread_mutex_lock(&c->lock);
     int from = (gen == c->gen) ? have - 1 : 0;  // resend the last one, it may still be growing
@@ -371,8 +370,12 @@ static void build_state(Setup *s, const char *req, StrBuf *json)
         from = 0;
     if (from > c->count)
         from = 0;
-    sb_appendf(json, "{\"gen\":%d,\"count\":%d,\"from\":%d,\"busy\":%s,\"ready\":%s,\"confirm\":", c->gen,
-               c->count, from, c->busy ? "true" : "false", ready ? "true" : "false");
+    sb_appendf(json, "{\"gen\":%d,\"count\":%d,\"from\":%d,\"busy\":%s,\"ready\":%s,\"bridge\":%s,\"model\":",
+               c->gen, c->count, from, c->busy ? "true" : "false", ready ? "true" : "false", bridge ? "true" : "false");
+    sb_append_json_string(json, model);
+    sb_append(json, ",\"effort\":");
+    sb_append_json_string(json, effort);
+    sb_append(json, ",\"confirm\":");
     if (c->confirm == CONFIRM_PENDING)
         sb_append_json_string(json, c->confirm_text);
     else
@@ -391,7 +394,8 @@ static void build_state(Setup *s, const char *req, StrBuf *json)
 
 static int handle_save(Setup *s, const char *body, StrBuf *html, StrBuf *resp)
 {
-    char mode[16], key[256], burl[160], btok[96], model[96], effort[16];
+    char mode[16], key[256], burl[160], btok[96], model[96], bmodel[64], effort[16];
+    form_get(body, "bridge_model", bmodel, sizeof(bmodel), 0);
     form_get(body, "mode", mode, sizeof(mode), 0);
     form_get(body, "api_key", key, sizeof(key), 0);
     form_get(body, "bridge_url", burl, sizeof(burl), 0);
@@ -413,6 +417,9 @@ static int handle_save(Setup *s, const char *body, StrBuf *html, StrBuf *resp)
         error = "The bridge address must start with http:// (for example http://192.168.1.50:8787).";
     else if (bridge && !btok[0] && !c.bridge_token[0])
         error = "Enter the pairing code that claude-bridge.py printed.";
+    else if ((model[0] && !config_model_ok(model)) || (bmodel[0] && !config_model_ok(bmodel)) ||
+             !config_effort_ok(effort))
+        error = "That model or effort is not valid.";
     if (error) {
         build_form(s, html, error);
         respond(resp, 400, "Bad Request", html->data);
@@ -431,6 +438,8 @@ static int handle_save(Setup *s, const char *body, StrBuf *html, StrBuf *resp)
         snprintf(c.bridge_token, sizeof(c.bridge_token), "%s", btok);
     if (model[0])
         snprintf(c.model, sizeof(c.model), "%s", model);
+    if (bmodel[0])
+        snprintf(c.bridge_model, sizeof(c.bridge_model), "%s", bmodel);
     snprintf(c.effort, sizeof(c.effort), "%s", effort);
     if (config_save(&c) != 0) {
         build_form(s, html, "Could not write /data/claude/claude.ini on the PS4.");
@@ -441,10 +450,13 @@ static int handle_save(Setup *s, const char *body, StrBuf *html, StrBuf *resp)
     s->cfg = c;
     s->cfg_ok = 1;
     pthread_mutex_unlock(&s->lock);
-    sb_append(html, PAGE_HEAD);
-    sb_append(html, bridge ? "<h1>Saved</h1><p>The PS4 now uses your PC bridge.</p>"
-                           : "<h1>Saved</h1><p>The PS4 now uses your API key.</p>");
-    sb_append(html, "<p><a href=/>Chat from this phone</a></p></body></html>");
+    page_head(html);
+    sb_append(html, "<div class=form><div class=hello style='margin-top:10vh'>");
+    sb_append(html, MARK_SVG);
+    sb_append(html, bridge ? "<h2>Saved</h2><p>The PS4 now uses your PC bridge.</p></div>"
+                           : "<h2>Saved</h2><p>The PS4 now uses your API key.</p></div>");
+    sb_append(html, "<a class='btn pri' style='display:block;text-align:center;text-decoration:none;margin-top:24px' "
+                    "href=/>Chat from this phone</a></div></body></html>");
     respond(resp, 200, "OK", html->data);
     return 1;
 }
@@ -501,8 +513,8 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
         if (!s->chat) {
             redirect(resp, "/settings", NULL);
         } else {
-            sb_append(&html, PAGE_HEAD);
-            sb_append(&html, REMOTE_PAGE);
+            page_head(&html);
+            sb_append(&html, WEB_REMOTE_HTML);
             respond(resp, 200, "OK", html.data);
         }
     } else if (is_req(req, "GET /settings")) {
@@ -548,6 +560,28 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
                 s->chat->confirm = !strncmp(body, "yes", 3) ? CONFIRM_YES : CONFIRM_NO;
             s->chat->dirty = 1;
             respond_json(resp, 200, "OK", "{\"ok\":true}");
+        } else if (is_req(req, "POST /api/model")) {
+            char model[96], effort[16];
+            form_get(body, "model", model, sizeof(model), 0);
+            form_get(body, "effort", effort, sizeof(effort), 0);
+            int ok = config_model_ok(model) && config_effort_ok(effort);
+            if (ok) {
+                pthread_mutex_lock(&s->lock);
+                Config c = s->cfg;
+                if (c.bridge)
+                    snprintf(c.bridge_model, sizeof(c.bridge_model), "%.63s", model);
+                else
+                    snprintf(c.model, sizeof(c.model), "%s", model);
+                snprintf(c.effort, sizeof(c.effort), "%s", effort);
+                ok = config_save(&c) == 0;
+                if (ok) {
+                    s->cfg = c;
+                    s->cfg_changed = 1;
+                }
+                pthread_mutex_unlock(&s->lock);
+            }
+            respond_json(resp, ok ? 200 : 400, ok ? "OK" : "Bad Request",
+                         ok ? "{\"ok\":true}" : "{\"error\":\"Could not change the model.\"}");
         } else if (is_req(req, "POST /api/stop")) {
             s->want_stop = 1;
             respond_json(resp, 200, "OK", "{\"ok\":true}");

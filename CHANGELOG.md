@@ -1,5 +1,13 @@
 # Changelog
 
+## 01.20 (2026-11-14)
+
+- New look based on the Claude desktop app: sidebar, centered chat, message box at the bottom, serif replies, drawn controller buttons.
+- Markdown in replies on the TV and phone: headings, bold, inline code, code blocks, lists, quotes, rules.
+- Model and effort picker: R2 on the TV, menus under the message box on the phone, and in phone Settings. Works in API key mode and PC bridge mode (claude-bridge.py now passes --model and --effort to Claude Code).
+- Phone page restyled to match, with light and dark themes.
+- New bridge_model setting in claude.ini.
+
 ## 01.10 (2026-11-14)
 
 - Phone remote: chat from your phone, answer confirm boxes there, stop a reply, start a new chat. The page stays up while the app runs; sign in with the PIN from Options.

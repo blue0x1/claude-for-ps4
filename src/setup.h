@@ -20,6 +20,7 @@ typedef struct {
     volatile int    stop;
     volatile int    shown;      // QR/PIN panel on the TV
     volatile int    saved;      // new settings saved; UI should reload
+    volatile int    cfg_changed; // model or effort changed from the phone
     char            url[64];    // http://<ip>:<port>/
     char            pin[8];
     int             bad_pins;
@@ -42,6 +43,8 @@ int  setup_start(Setup *s, const char *ip);
 void setup_stop(Setup *s);
 // Tells the page about the settings now in use.
 void setup_set_config(Setup *s, const Config *c, int ok);
+// Copies a model/effort change made on the phone into cfg. Returns 1 if there was one.
+int  setup_take_config(Setup *s, Config *cfg);
 // Takes a message typed on the phone. Returns 1 and fills text if there is one.
 int  setup_take_text(Setup *s, char *text, size_t len);
 

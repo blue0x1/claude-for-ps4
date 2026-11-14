@@ -50,6 +50,19 @@ Five wrong PINs make a new one appear on the TV.
 
 Both the phone page and the bridge use plain HTTP on your home network, protected by the PIN and the pairing code. Use them only on a network you trust.
 
+## Look and models
+
+The app looks like the Claude desktop app: a sidebar, the chat in the middle, and a message box at the bottom. Claude's replies use a serif font and show Markdown (headings, bold, inline code, code blocks, lists, quotes). The phone page has the same look, in light or dark to match your phone.
+
+Press R2 to pick the model and effort. Left/Right switches between the two lists, Cross picks, Circle closes. The choice is saved to `/data/claude/claude.ini` and used from the next message. The phone has the same two menus under the message box.
+
+| Mode | Models |
+|---|---|
+| API key | Opus 5.5 (default), Sonnet 5.5, Haiku 5.5, Fable 5.2, Opus 5 |
+| PC bridge | PC default, Opus, Sonnet, Haiku, Fable (latest of each in Claude Code) |
+
+Effort is Default, Low, Medium, High, Extra high or Max. Higher effort thinks longer and costs more (or uses more of your plan in bridge mode). In bridge mode, effort needs a Claude Code version with the `--effort` option; the bridge tells you at start if yours lacks it.
+
 ## Controls
 
 | Button | Action |
@@ -59,6 +72,7 @@ Both the phone page and the bridge use plain HTTP on your home network, protecte
 | Square | New chat |
 | Triangle | Reload claude.ini |
 | Options | Phone page (QR code and PIN) |
+| R2 | Pick the model and effort |
 | Up / Down, right stick | Scroll |
 | L1 / R1 | Scroll one page |
 | Confirm box | Cross allows, Circle denies (or Allow/Deny on the phone) |

@@ -8,7 +8,7 @@
 
 #include "../src/ui.h"
 
-Font g_body, g_small, g_title;
+Font g_body, g_small, g_tiny, g_title, g_serif, g_serif_b, g_head, g_hero, g_mono;
 Chat g_chat;
 Config g_cfg;
 int g_cfg_ok = 1, g_scroll, g_max_scroll;
@@ -27,19 +27,33 @@ static void save(Canvas *c, const char *path)
     free(rgb);
 }
 
-int main(int argc, char **argv)
+static unsigned char *load(const char *path)
 {
-    const char *outdir = argc > 1 ? argv[1] : ".";
-    FILE *f = fopen("assets/fonts/DejaVuSans.ttf", "rb");
+    FILE *f = fopen(path, "rb");
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
     fseek(f, 0, SEEK_SET);
     unsigned char *d = malloc((size_t)n);
     fread(d, 1, (size_t)n, f);
     fclose(f);
-    font_init(&g_body, d, 34);
-    font_init(&g_small, d, 28);
-    font_init(&g_title, d, 44);
+    return d;
+}
+
+int main(int argc, char **argv)
+{
+    const char *outdir = argc > 1 ? argv[1] : ".";
+    unsigned char *sans = load("assets/fonts/DejaVuSans.ttf"), *serif = load("assets/fonts/DejaVuSerif.ttf"),
+                  *serif_b = load("assets/fonts/DejaVuSerif-Bold.ttf"), *mono = load("assets/fonts/DejaVuSansMono.ttf");
+    font_init(&g_body, sans, 32);
+    font_init(&g_small, sans, 27);
+    font_init(&g_tiny, sans, 23);
+    font_init(&g_title, sans, 44);
+    font_init(&g_serif, serif, 34);
+    font_init(&g_hero, serif, 64);
+    font_init(&g_serif_b, serif_b, 34);
+    font_init(&g_head, serif_b, 42);
+    font_init(&g_mono, mono, 27);
+    ui_init();
     config_defaults(&g_cfg);
     chat_init(&g_chat);
     static uint32_t px[SCREEN_W * SCREEN_H];
@@ -51,14 +65,30 @@ int main(int argc, char **argv)
     save(&c, path);
 
     chat_add(&g_chat, ROLE_USER, "How much space is left on my PS4, and are there any .pkg files on my USB drive?");
-    chat_add(&g_chat, ROLE_TOOL, "Tool: get_system_info");
-    chat_add(&g_chat, ROLE_TOOL, "Tool: find_pkg_files");
+    chat_add(&g_chat, ROLE_TOOL, "Checked system info");
+    chat_add(&g_chat, ROLE_TOOL, "Searched for .pkg files");
     chat_add(&g_chat, ROLE_ASSISTANT,
-             "Your internal storage has 312.4 GB free of 862.0 GB, and the CPU is at 52 C, which is normal.\n\n"
+             "## Storage\n"
+             "Your internal storage has **312.4 GB free** of 862.0 GB, and the CPU is at 52 C, which is normal.\n\n"
              "I found two packages on the USB drive:\n"
-             "- /mnt/usb0/pkg/Kali-PS4-Launcher.pkg (14.2 MB)\n"
-             "- /mnt/usb0/pkg/RetroArch_PS4.pkg (402.7 MB)\n\n"
+             "- `Kali-PS4-Launcher.pkg` (14.2 MB)\n"
+             "- `RetroArch_PS4.pkg` (402.7 MB)\n\n"
+             "To check one yourself from a PC:\n"
+             "```\n"
+             "curl ftp://192.168.1.100:2121/mnt/usb0/pkg/\n"
+             "```\n"
              "Want me to back up your saves to the USB drive before you install anything?");
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-chat.png", outdir);
+    save(&c, path);
+    g_picker.open = 1;
+    g_picker.col = 1;
+    g_picker.row = 3;
+    snprintf(g_cfg.effort, sizeof(g_cfg.effort), "high");
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-picker.png", outdir);
+    save(&c, path);
+    g_picker.open = 0;
     chat_add(&g_chat, ROLE_USER, "Yes, copy my saves to the USB.");
     g_chat.busy = 1;
     g_chat.confirm = CONFIRM_PENDING;

@@ -19,7 +19,13 @@ typedef struct {
     int    nlines;
     int   *line_start;
     int   *line_len;
+    void  *rich;          // Markdown layout for replies (Rich *), owned by the UI
+    size_t rich_len;
+    int    rich_width;
 } Msg;
+
+// Frees the UI layout cache of a message (set by the UI).
+extern void (*chat_free_layout)(Msg *m);
 
 enum { CONFIRM_NONE, CONFIRM_PENDING, CONFIRM_YES, CONFIRM_NO };
 

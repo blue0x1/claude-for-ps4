@@ -175,3 +175,61 @@ void canvas_fill(Canvas *c, Rect r, uint32_t rgb, const Rect *clip)
             row[x] = v;
     }
 }
+
+// Rounded rectangle with smooth corners.
+void canvas_round(Canvas *c, Rect r, int radius, uint32_t rgb, const Rect *clip)
+{
+    if (radius * 2 > r.w)
+        radius = r.w / 2;
+    if (radius * 2 > r.h)
+        radius = r.h / 2;
+    if (radius <= 0) {
+        canvas_fill(c, r, rgb, clip);
+        return;
+    }
+    // Middle band and the side strips between the corners.
+    canvas_fill(c, (Rect){ r.x, r.y + radius, r.w, r.h - 2 * radius }, rgb, clip);
+    canvas_fill(c, (Rect){ r.x + radius, r.y, r.w - 2 * radius, radius }, rgb, clip);
+    canvas_fill(c, (Rect){ r.x + radius, r.y + r.h - radius, r.w - 2 * radius, radius }, rgb, clip);
+    Rect cr = clip_rect(c, clip);
+    float rr = (float)radius;
+    for (int dy = 0; dy < radius; dy++) {
+        for (int dx = 0; dx < radius; dx++) {
+            // Distance from the corner circle centre, sampled at the pixel centre.
+            float fx = rr - (float)dx - 0.5f, fy = rr - (float)dy - 0.5f;
+            float d = sqrtf(fx * fx + fy * fy);
+            float cov = rr - d + 0.5f;
+            if (cov <= 0.f)
+                continue;
+            unsigned a = cov >= 1.f ? 255u : (unsigned)(cov * 255.f);
+            int xs[2] = { r.x + dx, r.x + r.w - 1 - dx };
+            int ys[2] = { r.y + dy, r.y + r.h - 1 - dy };
+            for (int k = 0; k < 4; k++) {
+                int px = xs[k & 1], py = ys[k >> 1];
+                if (px < cr.x || px >= cr.x + cr.w || py < cr.y || py >= cr.y + cr.h)
+                    continue;
+                uint32_t *p = c->px + (size_t)py * (size_t)c->stride + px;
+                *p = blend(c, *p, rgb, a);
+            }
+        }
+    }
+}
+
+// Rounded outline: outer shape in border colour, inner shape in fill colour.
+void canvas_round_border(Canvas *c, Rect r, int radius, int width, uint32_t border, uint32_t fill, const Rect *clip)
+{
+    canvas_round(c, r, radius, border, clip);
+    canvas_round(c, (Rect){ r.x + width, r.y + width, r.w - 2 * width, r.h - 2 * width },
+                 radius > width ? radius - width : 0, fill, clip);
+}
+
+// Darkens an area (used behind dialogs). keep is 0..255 of the original brightness.
+void canvas_dim(Canvas *c, Rect r, unsigned keep)
+{
+    Rect cr = clip_rect(c, &r);
+    for (int y = cr.y; y < cr.y + cr.h; y++) {
+        uint32_t *row = c->px + (size_t)y * (size_t)c->stride;
+        for (int x = cr.x; x < cr.x + cr.w; x++)
+            row[x] = blend(c, row[x], 0x000000, 255u - keep);
+    }
+}

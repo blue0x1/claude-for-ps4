@@ -34,6 +34,9 @@ int  font_text_width(Font *f, const char *s, int len);
 int  font_draw(Font *f, Canvas *c, int x, int y, const char *s, int len, uint32_t rgb, const Rect *clip);
 
 void canvas_fill(Canvas *c, Rect r, uint32_t rgb, const Rect *clip);
+void canvas_round(Canvas *c, Rect r, int radius, uint32_t rgb, const Rect *clip);
+void canvas_round_border(Canvas *c, Rect r, int radius, int width, uint32_t border, uint32_t fill, const Rect *clip);
+void canvas_dim(Canvas *c, Rect r, unsigned keep);
 
 // UTF-8 decode; advances *i. Invalid bytes decode as U+FFFD.
 unsigned utf8_next(const char *s, int len, int *i);

@@ -15,10 +15,54 @@ const char *const CONFIG_PATHS[] = {
     NULL,
 };
 
+const char *const CONFIG_MODELS[] = {
+    "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2", "claude-opus-5", NULL,
+};
+const char *const CONFIG_MODEL_NAMES[] = {
+    "Opus 5.5", "Sonnet 5.5", "Haiku 5.5", "Fable 5.2", "Opus 5", NULL,
+};
+const char *const CONFIG_BRIDGE_MODELS[] = { "default", "opus", "sonnet", "haiku", "fable", NULL };
+const char *const CONFIG_EFFORTS[] = { "", "low", "medium", "high", "xhigh", "max", NULL };
+
+const char *config_active_model(const Config *cfg)
+{
+    return cfg->bridge ? cfg->bridge_model : cfg->model;
+}
+
+const char *config_model_name(const char *id)
+{
+    for (int i = 0; CONFIG_MODELS[i]; i++)
+        if (!strcmp(id, CONFIG_MODELS[i]))
+            return CONFIG_MODEL_NAMES[i];
+    if (!strcmp(id, "default"))
+        return "PC default";
+    return id;
+}
+
+int config_model_ok(const char *s)
+{
+    if (!s || !*s || *s == '-' || strlen(s) > 63)
+        return 0;
+    for (; *s; s++)
+        if (!((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') ||
+              *s == '.' || *s == '-' || *s == '_' || *s == '[' || *s == ']'))
+            return 0;
+    return 1;
+}
+
+int config_effort_ok(const char *s)
+{
+    for (int i = 0; CONFIG_EFFORTS[i]; i++)
+        if (!strcmp(s, CONFIG_EFFORTS[i]))
+            return 1;
+    return 0;
+}
+
 void config_defaults(Config *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
     snprintf(cfg->model, sizeof(cfg->model), "%s", CONFIG_DEFAULT_MODEL);
+    snprintf(cfg->bridge_model, sizeof(cfg->bridge_model), "default");
     cfg->max_tokens = 16000;
     snprintf(cfg->system, sizeof(cfg->system), "%s", CONFIG_DEFAULT_SYSTEM);
     cfg->tls_verify = 1;
@@ -75,9 +119,11 @@ void config_parse(Config *cfg, const char *text)
             snprintf(cfg->api_key, sizeof(cfg->api_key), "%s", val);
         else if (!strcmp(key, "model") && *val)
             snprintf(cfg->model, sizeof(cfg->model), "%s", val);
+        else if (!strcmp(key, "bridge_model") && *val)
+            snprintf(cfg->bridge_model, sizeof(cfg->bridge_model), "%s", val);
         else if (!strcmp(key, "max_tokens") && atoi(val) > 0)
             cfg->max_tokens = atoi(val);
-        else if (!strcmp(key, "effort"))
+        else if (!strcmp(key, "effort") && config_effort_ok(val))
             snprintf(cfg->effort, sizeof(cfg->effort), "%s", val);
         else if (!strcmp(key, "system")) {
             snprintf(cfg->system, sizeof(cfg->system), "%s", val);
@@ -161,6 +207,7 @@ void config_write(const Config *cfg, StrBuf *out)
     sb_appendf(out, "bridge_url=%s\n", cfg->bridge_url);
     sb_appendf(out, "bridge_token=%s\n", cfg->bridge_token);
     sb_appendf(out, "model=%s\n", cfg->model);
+    sb_appendf(out, "bridge_model=%s\n", cfg->bridge_model);
     sb_appendf(out, "max_tokens=%d\n", cfg->max_tokens);
     sb_appendf(out, "effort=%s\n", cfg->effort);
     sb_appendf(out, "tls_verify=%d\n", cfg->tls_verify);

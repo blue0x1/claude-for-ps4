@@ -22,7 +22,8 @@ static void *fake_main(void *arg)
             chat_add(&chat, ROLE_USER, text);
             chat.busy = 1;
             int a = chat_add(&chat, ROLE_ASSISTANT, "");
-            const char *words[] = { "Sure. ", "Your PS4 has ", "412 GB free ", "on internal storage." };
+            const char *words[] = { "## Storage\n", "Your PS4 has **412 GB free** ", "on internal storage.\n\n- `/data`: 2 GB\n",
+                                    "- USB: 58 GB\n\n```\nls /mnt/usb0\n```" };
             for (int i = 0; i < 4; i++) {
                 usleep(400000);
                 chat_append(&chat, a, words[i], strlen(words[i]));
@@ -48,7 +49,7 @@ int main(int argc, char **argv)
     setup_set_config(&s, &c, 1);
     snprintf(s.pin, sizeof(s.pin), "%s", argc > 1 ? argv[1] : "123456");
     chat_add(&chat, ROLE_USER, "How much space is left?");
-    chat_add(&chat, ROLE_TOOL, "get_system_info");
+    chat_add(&chat, ROLE_TOOL, "Checked system info");
     chat_add(&chat, ROLE_ASSISTANT, "You have 412 GB free of 825 GB. The SoC is at 54 C.");
     if (argc > 2) {
         chat.confirm = CONFIRM_PENDING;

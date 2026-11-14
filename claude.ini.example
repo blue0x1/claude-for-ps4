@@ -14,8 +14,13 @@ api_key=sk-ant-REPLACE-ME
 bridge_url=
 bridge_token=
 
-# Model. Default: claude-opus-5-5
+# Model in API key mode: claude-opus-5-5 (default), claude-sonnet-5-5,
+# claude-haiku-5-5, claude-fable-5-2, claude-opus-5. You can also pick it on the PS4 with R2.
 model=claude-opus-5-5
+
+# Model in PC bridge mode: default (whatever Claude Code uses), opus, sonnet, haiku, fable,
+# or a full model id.
+bridge_model=default
 
 # Longest reply in tokens. Default: 16000
 max_tokens=16000
