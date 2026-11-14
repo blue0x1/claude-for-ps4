@@ -20,23 +20,23 @@
 
 ## What it does
 
-Chat with Claude on your PS4. Claude can also control the console - manage files, install games from your PC, back up saves, control the fan, read GoldHEN plugins and cheats, and more. Everything that changes something asks for confirmation first.
+Chat with Claude on your PS4. Claude can also control the console: manage files, install games from your PC, back up saves, control the fan, read GoldHEN plugins and cheats, and more. Everything that changes something asks for confirmation first.
 
-You can also chat from your phone - the PS4 hosts a web page on your home network.
+You can also chat from your phone. The PS4 hosts a web page on your home network.
 
 
 ## Install
 
 1. Install `IV0000-CLDE00001_00-CLAUDEFORPS40000.pkg` via GoldHEN Package Installer.
-2. Launch **Claude for PS4** - it shows a QR code and PIN on first start.
+2. Launch **Claude for PS4**. It shows a QR code and PIN on first start.
 3. Scan with your phone, sign in with the PIN, and pick your sign-in method.
 
 
 ## Sign in
 
-**API key** - get a key from [console.anthropic.com](https://console.anthropic.com). Pay per use, no PC needed.
+**API key**: get a key from [console.anthropic.com](https://console.anthropic.com). Pay per use, no PC needed.
 
-**PC bridge** - uses your Claude account. Requires a PC on the same network running:
+**PC bridge**: uses your Claude account. Requires a PC on the same network running:
 ```sh
 claude          # sign in once with /login
 python3 tools/claude-bridge.py
@@ -59,7 +59,7 @@ The bridge prints its address. Open `http://127.0.0.1:8787` on the PC to pair, o
 | Screenshots | "What's on my screen?" (take a screenshot with SHARE first) |
 | Home folders | "Make a Racing folder with GTA and NFS" |
 | Memory | "Remember that USB 0 is for backups" |
-| Permission modes | Full, Trusted, Read-only, Kid - set from the phone menu |
+| Permission modes | Full, Trusted, Read-only, Kid (set from the phone menu) |
 | Update check | "Is there an app update?" (bridge only) |
 
 
@@ -88,6 +88,6 @@ make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 ## License
 
-MIT - see [LICENSE](LICENSE)
+MIT. See [LICENSE](LICENSE)
 
 Third-party: DejaVu Sans font (`assets/fonts/DejaVu-LICENSE.txt`), stb_truetype (public domain / MIT), QR codes by Project Nayuki (MIT), GoldHEN jailbreak call based on GoldHEN Plugins SDK (MIT).
