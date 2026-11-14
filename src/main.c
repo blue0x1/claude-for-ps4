@@ -96,19 +96,43 @@ static void load_config(void)
         chat_add(&g_chat, ROLE_NOTICE, err);
         chat_add(&g_chat, ROLE_NOTICE, "Then press Triangle to load it.");
     }
+    setup_set_config(&g_setup, &g_cfg, g_cfg_ok);
+}
+
+// Starts the phone page server if the network is up. Quiet unless asked.
+static int start_phone_server(int verbose)
+{
+    if (g_setup.active)
+        return 1;
+    OrbisNetCtlInfo info;
+    memset(&info, 0, sizeof(info));
+    if (sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_IP_ADDRESS, &info) < 0 || !info.ip_address[0]) {
+        if (verbose)
+            chat_add(&g_chat, ROLE_NOTICE, "The phone page needs the PS4 to be connected to your network.");
+        return 0;
+    }
+    if (setup_start(&g_setup, info.ip_address) < 0) {
+        if (verbose)
+            chat_add(&g_chat, ROLE_NOTICE, "Could not start the phone page (port 8765 busy?).");
+        return 0;
+    }
+    return 1;
 }
 
 static void open_phone_setup(void)
 {
-    OrbisNetCtlInfo info;
-    memset(&info, 0, sizeof(info));
-    if (sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_IP_ADDRESS, &info) < 0 || !info.ip_address[0]) {
-        chat_add(&g_chat, ROLE_NOTICE, "Phone setup needs the PS4 to be connected to your network.");
-        return;
-    }
-    if (setup_start(&g_setup, &g_cfg, info.ip_address) < 0)
-        chat_add(&g_chat, ROLE_NOTICE, "Could not start the phone setup page (port 8765 busy?).");
+    if (start_phone_server(1))
+        g_setup.shown = 1;
     g_chat.dirty = 1;
+}
+
+static void check_clock(void)
+{
+    time_t t = time(NULL);
+    struct tm *tm = gmtime(&t);
+    if (tm && tm->tm_year + 1900 < 2025)
+        chat_add(&g_chat, ROLE_NOTICE, "The PS4 clock looks wrong. HTTPS needs the right date: "
+                                       "set it in Settings > Date and Time.");
 }
 
 static void fatal_screen(Canvas *c, SDL_Window *win, const char *msg)
@@ -149,6 +173,7 @@ int main(void)
         fatal_screen(&canvas, win, "Font missing");
 
     chat_init(&g_chat);
+    setup_init(&g_setup, &g_chat);
     plat_jailbreak();
 
     char err[200];
@@ -162,8 +187,11 @@ int main(void)
 
     sceNetCtlInit();
     load_config();
+    check_clock();
     if (!g_cfg_ok)
         open_phone_setup();
+    else
+        start_phone_server(0);
 
     unsigned prev_buttons = 0;
     int was_busy = 0, frame = 0;
@@ -191,9 +219,9 @@ int main(void)
             unsigned b = pd.buttons, pressed = b & ~prev_buttons;
             prev_buttons = b;
 
-            if (g_setup.active && g_chat.confirm != CONFIRM_PENDING) {
+            if (g_setup.shown && g_chat.confirm != CONFIRM_PENDING) {
                 if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
-                    setup_stop(&g_setup);
+                    g_setup.shown = 0;  // the server keeps running for the phone remote
                     g_chat.dirty = 1;
                 }
             } else if (g_chat.confirm == CONFIRM_PENDING) {
@@ -245,10 +273,27 @@ int main(void)
                 g_chat.dirty = 1;
         }
 
-        // Settings saved from the phone
-        if (g_setup.saved) {
+        // Requests from the phone remote
+        if (g_setup.want_stop) {
+            g_setup.want_stop = 0;
+            if (g_chat.busy)
+                net_cancel(&g_chat);
+        }
+        if (g_setup.want_new && !g_chat.busy) {
+            g_setup.want_new = 0;
+            chat_clear(&g_chat);
+            g_history_path[0] = 0;
+            g_scroll = 0;
+        }
+        if (!g_chat.busy && g_cfg_ok && !ime_is_open() && setup_take_text(&g_setup, input, sizeof(input))) {
+            g_scroll = 0;
+            net_send(&g_chat, &g_cfg, input);
+        }
+
+        // Settings saved from the phone (applied once idle)
+        if (g_setup.saved && !g_chat.busy) {
             g_setup.saved = 0;
-            setup_stop(&g_setup);
+            g_setup.shown = 0;
             chat_clear(&g_chat);
             load_config();
             if (g_cfg_ok)
@@ -256,8 +301,10 @@ int main(void)
                              ? "Saved from your phone. Using your PC bridge (Claude account). Press Cross to type."
                              : "Saved from your phone. Using your API key. Press Cross to type.");
         }
-        if (g_setup.active && frame % 30 == 0)
+        if (g_setup.shown && frame % 30 == 0)
             g_chat.dirty = 1;  // the PIN can change after wrong tries
+        if (!g_setup.active && frame % 600 == 300)
+            start_phone_server(0);  // network came up later
 
         if (was_busy && !g_chat.busy)
             save_history();

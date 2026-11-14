@@ -29,6 +29,7 @@ void chat_clear(Chat *c)
         free(c->msgs[i].line_len);
     }
     c->count = 0;
+    c->gen++;
     pthread_mutex_unlock(&c->lock);
     chat_api_truncate(c, 0);
     new_conv_id(c);

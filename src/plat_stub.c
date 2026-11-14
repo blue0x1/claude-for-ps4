@@ -22,4 +22,16 @@ int plat_notify(const char *text) { printf("[notify] %s\n", text); return 0; }
 int plat_jailbreak(void) { return 0; }
 int plat_jailbroken(void) { return 0; }
 int plat_user_id(void) { return 0; }
+int plat_random(void *buf, size_t n)
+{
+    FILE *f = fopen("/dev/urandom", "rb");
+    int ok = f && fread(buf, 1, n, f) == n;
+    if (f) fclose(f);
+    return ok ? 0 : -1;
+}
+int plat_set_fan_threshold(int c, StrBuf *out) { sb_appendf(out, "Fan threshold set to %d C.", c); return 0; }
+int plat_install_pkg(const char *p, const char *cid, const char *type, unsigned long long size, const char *title, StrBuf *out)
+{ (void)size; (void)title; sb_appendf(out, "Install started for %s (%s, %s).", p, cid, type); return 0; }
+int plat_uninstall_app(const char *t, StrBuf *out) { sb_appendf(out, "Uninstalled %s.", t); return 0; }
+int plat_send_payload(const char *p, StrBuf *out) { sb_appendf(out, "Sent %s.", p); return 0; }
 #endif

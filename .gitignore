@@ -5,3 +5,4 @@ sce_sys/param.sfo
 *.pkg
 claude.ini
 tests/out_request.json
+tests/phone_server

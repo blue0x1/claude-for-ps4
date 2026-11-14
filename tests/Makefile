@@ -1,4 +1,5 @@
 # Host tests and UI preview (run from the repo root: make -C tests)
+OO_PS4_TOOLCHAIN ?= /opt/oo/OpenOrbis/PS4Toolchain
 STB ?= $(OO_PS4_TOOLCHAIN)/include/stb
 SRC := ../src
 CC  ?= gcc
@@ -6,7 +7,7 @@ CFLAGS := -g -O1 -Wall -Wno-unused-result -I$(STB)
 COMMON := $(SRC)/chat.c $(SRC)/config.c $(SRC)/font.c $(SRC)/json.c $(SRC)/layout.c \
           $(SRC)/strbuf.c $(SRC)/plat_stub.c
 
-.PHONY: all test preview
+.PHONY: all test preview phone
 all: test preview
 
 test:
@@ -16,3 +17,8 @@ test:
 preview:
 	$(CC) $(CFLAGS) -w -o preview preview.c $(COMMON) $(SRC)/ui.c $(SRC)/setup.c $(SRC)/qrcodegen.c -lpthread -lm
 	cd .. && tests/preview tests
+
+# Serves the phone page on http://127.0.0.1:8765 with a fake chat (PIN 123456).
+phone:
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -o phone_server phone_server.c $(COMMON) $(SRC)/setup.c -DCONFIG_SAVE_DIR='"/tmp/claude-ps4-test"' -lpthread -lm
+	./phone_server 123456

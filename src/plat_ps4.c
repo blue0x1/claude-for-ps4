@@ -6,10 +6,14 @@
 
 #include <fcntl.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
+
+#include <orbis/Sysmodule.h>
 
 #include <orbis/NetCtl.h>
 #include <orbis/libkernel.h>
@@ -76,7 +80,6 @@ void plat_system_info(StrBuf *out)
     if (sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_IP_ADDRESS, &info) == 0)
         sb_appendf(out, "IP address: %s\n", info.ip_address);
     sb_appendf(out, "Full file access (GoldHEN jailbreak): %s\n", plat_jailbroken() ? "yes" : "no");
-    sb_append(out, "Fan threshold control: not available yet in this version.\n");
 }
 
 typedef struct {
@@ -150,4 +153,202 @@ int plat_jailbreak(void)
 }
 
 int plat_jailbroken(void) { return g_jailbroken; }
+
+// ---- random -------------------------------------------------------------
+
+int sceRandomGetRandomNumber(void *buf, size_t size);
+
+int plat_random(void *buf, size_t n)
+{
+    static int loaded;
+    if (!loaded) {
+        sceSysmoduleLoadModule(ORBIS_SYSMODULE_RANDOM);
+        loaded = 1;
+    }
+    // The system call accepts at most 64 bytes at a time.
+    unsigned char *p = buf;
+    while (n) {
+        size_t k = n > 64 ? 64 : n;
+        if (sceRandomGetRandomNumber(p, k) < 0)
+            return -1;
+        p += k;
+        n -= k;
+    }
+    return 0;
+}
+
+// ---- fan ----------------------------------------------------------------
+
+int ioctl(int fd, unsigned long request, ...);
+
+int plat_set_fan_threshold(int celsius, StrBuf *out)
+{
+    int fd = open("/dev/icc_fan", O_RDONLY, 0);
+    if (fd < 0) {
+        sb_append(out, "Could not open /dev/icc_fan. This needs GoldHEN full access (header must not say sandboxed).");
+        return 1;
+    }
+    unsigned char data[10] = { 0 };
+    data[5] = (unsigned char)celsius;
+    int r = ioctl(fd, 0xC01C8F07, data);
+    close(fd);
+    if (r < 0) {
+        sb_append(out, "The fan controller refused the change.");
+        return 1;
+    }
+    sb_appendf(out, "Fan threshold set to %d C until the next reboot.", celsius);
+    return 0;
+}
+
+// ---- pkg install / uninstall ---------------------------------------------
+
+#include <orbis/AppInstUtil.h>
+#include <orbis/Bgft.h>
+
+static int bgft_ready, appinst_ready;
+
+static int bgft_init(void)
+{
+    if (bgft_ready)
+        return 0;
+    if ((int)sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_BGFT) < 0)
+        return -1;
+    static OrbisBgftInitParams ip;
+    ip.heapSize = 0x100000;
+    ip.heap = malloc(ip.heapSize);
+    if (!ip.heap || sceBgftServiceIntInit(&ip) < 0)
+        return -1;
+    bgft_ready = 1;
+    return 0;
+}
+
+static int appinst_init(void)
+{
+    if (appinst_ready)
+        return 0;
+    sceKernelLoadStartModule("/system/common/lib/libSceAppInstUtil.sprx", 0, NULL, 0, NULL, NULL);
+    if (sceAppInstUtilInitialize() < 0)
+        return -1;
+    appinst_ready = 1;
+    return 0;
+}
+
+int plat_install_pkg(const char *path, const char *content_id, const char *pkg_type,
+                     unsigned long long size, const char *title, StrBuf *out)
+{
+    if (bgft_init() < 0) {
+        sb_append(out, "Could not start the system package installer (BGFT).");
+        return 1;
+    }
+    OrbisBgftDownloadParamEx p;
+    memset(&p, 0, sizeof(p));
+    p.params.entitlementType = 5;
+    p.params.id = content_id;
+    p.params.contentUrl = path;
+    p.params.contentName = title;
+    p.params.iconPath = "";
+    p.params.playgoScenarioId = "0";
+    p.params.option = ORBIS_BGFT_TASK_OPT_DISABLE_CDN_QUERY_PARAM;
+    p.params.packageType = pkg_type;
+    p.params.packageSubType = "";
+    p.params.packageSize = size;
+    p.slot = 0;
+    OrbisBgftTaskId task = -1;
+    int r = sceBgftServiceIntDownloadRegisterTaskByStorageEx(&p, &task);
+    if (r == (int)0x80990088) {
+        sb_append(out, "This package is already installed (or an install of it is queued).");
+        return 1;
+    }
+    if (r < 0) {
+        sb_appendf(out, "The installer refused the package (0x%08X).", (unsigned)r);
+        return 1;
+    }
+    r = sceBgftServiceDownloadStartTask(task);
+    if (r < 0) {
+        sb_appendf(out, "Could not start the install task (0x%08X).", (unsigned)r);
+        return 1;
+    }
+    sb_appendf(out, "Install started for %s. Progress shows in Notifications > Downloads.", content_id);
+    return 0;
+}
+
+int plat_uninstall_app(const char *title_id, StrBuf *out)
+{
+    if (appinst_init() < 0) {
+        sb_append(out, "Could not start the system app installer service.");
+        return 1;
+    }
+    int r = sceAppInstUtilAppUnInstall(title_id);
+    if (r < 0) {
+        sb_appendf(out, "Uninstall failed (0x%08X).", (unsigned)r);
+        return 1;
+    }
+    sb_appendf(out, "Uninstalled %s.", title_id);
+    return 0;
+}
+
+// ---- payloads -----------------------------------------------------------
+
+#include <orbis/Net.h>
+
+struct bsd_sockaddr_in4 {
+    uint8_t len, family;
+    uint16_t port;
+    uint32_t addr;
+    char zero[8];
+};
+
+int plat_send_payload(const char *path, StrBuf *out)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        sb_appendf(out, "Could not open %s.", path);
+        return 1;
+    }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (n <= 0 || n > 64 * 1024 * 1024) {
+        fclose(f);
+        sb_append(out, "The payload is empty or too large.");
+        return 1;
+    }
+    char *buf = malloc((size_t)n);
+    if (!buf || fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        fclose(f);
+        free(buf);
+        sb_append(out, "Could not read the payload.");
+        return 1;
+    }
+    fclose(f);
+    int s = sceNetSocket("claudePayload", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_STREAM, 0);
+    struct bsd_sockaddr_in4 a;
+    memset(&a, 0, sizeof(a));
+    a.len = sizeof(a);
+    a.family = ORBIS_NET_AF_INET;
+    a.port = sceNetHtons(9090);
+    a.addr = 0x0100007F;  // 127.0.0.1 in network order
+    if (s < 0 || sceNetConnect(s, (OrbisNetSockaddr *)&a, sizeof(a)) < 0) {
+        if (s >= 0)
+            sceNetSocketClose(s);
+        free(buf);
+        sb_append(out, "GoldHEN BinLoader is not listening on port 9090. Turn on BinLoader Server in GoldHEN settings.");
+        return 1;
+    }
+    long off = 0;
+    while (off < n) {
+        int w = sceNetSend(s, buf + off, (size_t)(n - off), 0);
+        if (w <= 0)
+            break;
+        off += w;
+    }
+    sceNetSocketClose(s);
+    free(buf);
+    if (off != n) {
+        sb_appendf(out, "Sending stopped after %ld of %ld bytes.", off, n);
+        return 1;
+    }
+    sb_appendf(out, "Sent %ld bytes to GoldHEN BinLoader.", n);
+    return 0;
+}
 #endif

@@ -8,6 +8,7 @@
 #include "plat.h"
 #include "qrcodegen.h"
 #include "ui.h"
+#include "version.h"
 
 
 
@@ -103,7 +104,7 @@ static void draw_setup(Canvas *c)
     }
 
     int tx = qx + qsize + 70, y = panel.y + 90;
-    font_draw(&g_title, c, tx, y, "Set up from your phone", 22, COL_ACCENT, NULL);
+    font_draw(&g_title, c, tx, y, "Use your phone", 14, COL_ACCENT, NULL);
     y += 90;
     static const char *const lines[] = {
         "1. Connect your phone to the same Wi-Fi.",
@@ -120,7 +121,8 @@ static void draw_setup(Canvas *c)
     snprintf(pin, sizeof(pin), "%.3s %.3s", g_setup.pin, g_setup.pin + 3);
     font_draw(&g_title, c, tx + 40, y, pin, (int)strlen(pin), COL_ACCENT, NULL);
     y += g_title.line_h + 40;
-    const char *l4 = "4. Enter your API key, or your PC bridge details.";
+    const char *l4 = g_cfg_ok ? "4. Chat from the phone, or change settings."
+                              : "4. Enter your API key, or your PC bridge details.";
     font_draw(&g_body, c, tx, y, l4, (int)strlen(l4), COL_TEXT, NULL);
     const char *foot = "Circle: close";
     font_draw(&g_small, c, panel.x + 70, panel.y + panel.h - 70, foot, (int)strlen(foot), COL_DIM, NULL);
@@ -133,6 +135,9 @@ void render(Canvas *c, int frame)
     // Header
     canvas_fill(c, (Rect){ 0, 0, SCREEN_W, HEADER_H }, COL_HEADER, NULL);
     font_draw(&g_title, c, MARGIN_X, (HEADER_H - g_title.line_h) / 2, "Claude", 6, COL_ACCENT, NULL);
+    static const char ver[] = "v" APP_VERSION;
+    font_draw(&g_small, c, MARGIN_X + font_text_width(&g_title, "Claude", 6) + 16,
+              (HEADER_H - g_small.line_h) / 2 + 6, ver, (int)strlen(ver), COL_DIM, NULL);
     char right[160];
     if (!g_cfg_ok)
         snprintf(right, sizeof(right), "not set up");
@@ -203,8 +208,8 @@ void render(Canvas *c, int frame)
     // Footer
     canvas_fill(c, (Rect){ 0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H }, COL_HEADER, NULL);
     const char *hint;
-    if (g_setup.active)
-        hint = "Circle: close phone setup";
+    if (g_setup.shown)
+        hint = "Circle: close";
     else if (!g_cfg_ok)
         hint = "Options: set up from phone    Triangle: reload claude.ini";
     else if (g_chat.confirm == CONFIRM_PENDING)
@@ -212,13 +217,13 @@ void render(Canvas *c, int frame)
     else if (g_chat.busy)
         hint = "Circle: stop    Up/Down or right stick: scroll";
     else
-        hint = "Cross: type    Square: new chat    Options: phone setup    Triangle: reload    Up/Down, L1/R1: scroll";
+        hint = "Cross: type    Square: new chat    Options: phone    Triangle: reload    Up/Down, L1/R1: scroll";
     font_draw(&g_small, c, MARGIN_X, SCREEN_H - FOOTER_H + (FOOTER_H - g_small.line_h) / 2, hint,
               (int)strlen(hint), COL_DIM, NULL);
 
     if (g_chat.confirm == CONFIRM_PENDING)
         draw_confirm(c);
-    else if (g_setup.active)
+    else if (g_setup.shown)
         draw_setup(c);
 }
 

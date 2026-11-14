@@ -8,13 +8,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <orbis/Http.h>
 #include <orbis/Net.h>
 #include <orbis/Ssl.h>
 #include <orbis/Sysmodule.h>
 
-#define USER_AGENT     "ClaudeForPS4/1.0"
+#include "version.h"
+#define MAX_RETRIES    2
+#define USER_AGENT     "ClaudeForPS4/" APP_VERSION
 #define NET_POOL_SIZE  (16 * 1024)
 #define SSL_POOL_SIZE  (256 * 1024)
 #define HTTP_POOL_SIZE (256 * 1024)
@@ -76,9 +79,16 @@ static void notice(Chat *chat, const char *fmt, unsigned code)
     chat_add(chat, ROLE_NOTICE, buf);
 }
 
+static int retryable_status(int status)
+{
+    return status == 429 || status == 500 || status == 502 || status == 503 || status == 504 || status == 529;
+}
+
 // One streamed API call. Returns 1 on success with the assistant message
 // stored in *message_json, 0 on failure (a notice was already shown).
-static int stream_call(Job *job, Stream *st, char **message_json)
+// When may_retry is set and the failure happened before any reply text
+// (no connection, overloaded, rate limited), it returns 2 without a notice.
+static int stream_call(Job *job, Stream *st, char **message_json, int may_retry)
 {
     Chat *chat = job->chat;
     int tpl = -1, conn = -1, req = -1, ret, status = 0, ok = 0;
@@ -133,6 +143,10 @@ static int stream_call(Job *job, Stream *st, char **message_json)
 
     ret = sceHttpSendRequest(req, body.data, body.len);
     if (ret < 0) {
+        if (may_retry && !chat->cancel) {
+            ok = 2;
+            goto out;
+        }
         if (!chat->cancel && bridge)
             notice(chat, "Could not reach the PC bridge (0x%08X). Is claude-bridge.py running, "
                          "and is bridge_url right?", (unsigned)ret);
@@ -147,6 +161,10 @@ static int stream_call(Job *job, Stream *st, char **message_json)
 
     char buf[4096];
     int n = 0;
+    if (status != 200 && may_retry && !bridge && retryable_status(status)) {
+        ok = 2;
+        goto out;
+    }
     if (status != 200) {
         StrBuf eb;
         sb_init(&eb);
@@ -214,10 +232,11 @@ static char *run_tools(Job *job, Stream *st)
         tools_describe(name, input, desc, sizeof(desc));
         chat_add(job->chat, ROLE_TOOL, desc);
 
-        StrBuf result;
+        StrBuf result, images;
         sb_init(&result);
+        sb_init(&images);
         int is_error = job->chat->cancel ? (sb_append(&result, "Stopped by the user."), 1)
-                                         : tools_run(job->chat, name, input, &result);
+                                         : tools_run(job->chat, name, input, &result, &images);
         if (is_error) {
             char shown[300];
             snprintf(shown, sizeof(shown), "  %s", result.data ? result.data : "error");
@@ -228,11 +247,18 @@ static char *run_tools(Job *job, Stream *st)
         first = 0;
         sb_append(&msg, "{\"type\":\"tool_result\",\"tool_use_id\":");
         sb_append_json_string(&msg, id);
-        sb_append(&msg, ",\"content\":");
-        sb_append_json_string(&msg, result.data ? result.data : "");
+        sb_append(&msg, ",\"content\":[{\"type\":\"text\",\"text\":");
+        sb_append_json_string(&msg, result.data && result.len ? result.data : "(no output)");
+        sb_append(&msg, "}");
+        if (images.len) {
+            sb_appendc(&msg, ',');
+            sb_appendn(&msg, images.data, images.len);
+        }
+        sb_append(&msg, "]");
         if (is_error)
             sb_append(&msg, ",\"is_error\":true");
         sb_append(&msg, "}");
+        sb_free(&images);
         sb_free(&result);
     }
     sb_append(&msg, "]}");
@@ -256,7 +282,24 @@ static void run_conversation(Job *job)
         Stream st;
         stream_init(&st, chat);
         char *reply = NULL;
-        int ok = stream_call(job, &st, &reply);
+        int ok = 0;
+        for (int attempt = 0;; attempt++) {
+            ok = stream_call(job, &st, &reply, attempt < MAX_RETRIES);
+            if (ok != 2)
+                break;
+            int wait_s = 2 << attempt;  // 2 s, then 4 s
+            char msg[120];
+            snprintf(msg, sizeof(msg), "Claude is busy or the network dropped. Trying again in %d s...", wait_s);
+            chat_add(chat, ROLE_NOTICE, msg);
+            for (int t = 0; t < wait_s * 10 && !chat->cancel; t++)
+                usleep(100 * 1000);
+            if (chat->cancel) {
+                ok = 0;
+                break;
+            }
+            stream_free(&st);
+            stream_init(&st, chat);
+        }
         if (!ok) {
             if (chat->cancel)
                 chat_add(chat, ROLE_NOTICE, "Stopped.");

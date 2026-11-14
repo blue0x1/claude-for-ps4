@@ -3,7 +3,7 @@
 #        make OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 TITLE       := Claude for PS4
-VERSION     := 01.00
+VERSION     := 01.10
 TITLE_ID    := CLDE00001
 CONTENT_ID  := IV0000-CLDE00001_00-CLAUDEFORPS40000
 
@@ -13,7 +13,7 @@ export OO_PS4_TOOLCHAIN
 
 LIBS        := -lc -lkernel -lc++ -lSceUserService -lSceVideoOut -lSceAudioOut -lScePad \
                -lSceSysmodule -lSceFreeType -lSceNet -lSceSsl -lSceHttp \
-               -lSceCommonDialog -lSceImeDialog -lSceNetCtl -lSceSystemService -lSDL2
+               -lSceCommonDialog -lSceImeDialog -lSceNetCtl -lSceSystemService -lSceBgft -lSceAppInstUtil -lSceRandom -lSDL2
 
 ASSETS      := $(wildcard assets/fonts/*)
 LIBMODULES  := $(wildcard sce_module/*)
@@ -23,7 +23,7 @@ CFILES      := $(wildcard src/*.c)
 OBJS        := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(CFILES))
 HEADERS     := $(wildcard src/*.h)
 
-CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -O2 -Wall -Wno-unused-function -D__ORBIS__ \
+CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -O2 -Wall -Wno-unused-function -D__ORBIS__ -DAPP_VERSION=\"$(VERSION)\" \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include -isystem $(TOOLCHAIN)/include/stb -c
 LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib $(LIBS) $(TOOLCHAIN)/lib/crt1.o
 
@@ -47,7 +47,7 @@ all: $(CONTENT_ID).pkg
 $(CONTENT_ID).pkg: pkg.gp4
 	$(BIN)/PkgTool.Core pkg_build $< .
 
-pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png $(LIBMODULES) $(ASSETS)
+pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_sys/pic1.png $(LIBMODULES) $(ASSETS)
 	$(BIN)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "$^"
 
 sce_sys/param.sfo: Makefile

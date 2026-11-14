@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_LIST_ENTRIES 400
@@ -28,6 +29,12 @@ const char TOOLS_JSON[] =
 "{\"name\":\"find_pkg_files\",\"description\":\"Find .pkg files on USB drives and in /data. Read-only.\",\"input_schema\":{\"type\":\"object\",\"properties\":{}}},"
 "{\"name\":\"list_installed_apps\",\"description\":\"List installed games and apps with title IDs and names. Read-only.\",\"input_schema\":{\"type\":\"object\",\"properties\":{}}},"
 "{\"name\":\"launch_app\",\"description\":\"Launch an installed game or app by title ID (for example CUSA00001). This closes Claude for PS4. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"title_id\":{\"type\":\"string\"}},\"required\":[\"title_id\"]}},"
+"{\"name\":\"install_pkg\",\"description\":\"Install a .pkg file from USB or internal storage (use find_pkg_files first). Runs in the background in the system download queue. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}},"
+"{\"name\":\"uninstall_app\",\"description\":\"Uninstall a game or app by title ID (use list_installed_apps first). Its save data is kept. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"title_id\":{\"type\":\"string\"}},\"required\":[\"title_id\"]}},"
+"{\"name\":\"set_fan_threshold\",\"description\":\"Set the temperature in Celsius (45 to 80) at which the fan speeds up. Lower is cooler but louder. Default on a PS4 is 79. Lasts until reboot. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"celsius\":{\"type\":\"integer\"}},\"required\":[\"celsius\"]}},"
+"{\"name\":\"list_screenshots\",\"description\":\"List the newest screenshots the user took (SHARE button), newest first. Read-only.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}},"
+"{\"name\":\"view_image\",\"description\":\"Look at a JPEG or PNG image on the PS4, for example a screenshot from list_screenshots, to answer questions about it. Use path latest for the newest screenshot.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}},"
+"{\"name\":\"send_payload\",\"description\":\"Run a payload .bin file through GoldHEN BinLoader (port 9090), for example a Linux loader. Payloads run with kernel access, so only use files the user named. The user must confirm on screen.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}},"
 "{\"name\":\"show_notification\",\"description\":\"Show a short system notification pop-up on the PS4.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}}"
 "]";
 
@@ -241,6 +248,202 @@ static int sfo_get_string(const char *path, const char *key, char *out, size_t o
         return 1;
     }
     return 0;
+}
+
+
+// ---- pkg, images, base64 -------------------------------------------------
+
+static uint32_t be32(const unsigned char *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+}
+
+int pkg_read_info(const char *path, char content_id[37], const char **pkg_type, unsigned long long *size)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return 0;
+    unsigned char h[0x80];
+    size_t n = fread(h, 1, sizeof(h), f);
+    fseek(f, 0, SEEK_END);
+    *size = (unsigned long long)ftell(f);
+    fclose(f);
+    if (n < sizeof(h) || be32(h) != 0x7F434E54)
+        return 0;
+    memcpy(content_id, h + 0x40, 36);
+    content_id[36] = 0;
+    for (int i = 0; i < 36; i++)
+        if ((unsigned char)content_id[i] < 0x20 || (unsigned char)content_id[i] > 0x7E)
+            return 0;
+    uint32_t type = be32(h + 0x74), flags = be32(h + 0x78);
+    if (flags & (0x100000 | 0x400000 | 0x800000))
+        *pkg_type = "PS4PATCH";
+    else if (type == 0x1B)
+        *pkg_type = "PS4AC";
+    else if (type == 0x1C)
+        *pkg_type = "PS4AL";
+    else
+        *pkg_type = "PS4GD";
+    return 1;
+}
+
+void base64_append(StrBuf *out, const unsigned char *d, size_t n)
+{
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    sb_reserve(out, (n + 2) / 3 * 4);
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t v = (uint32_t)d[i] << 16;
+        if (i + 1 < n) v |= (uint32_t)d[i + 1] << 8;
+        if (i + 2 < n) v |= d[i + 2];
+        char q[4] = { t[(v >> 18) & 63], t[(v >> 12) & 63], i + 1 < n ? t[(v >> 6) & 63] : '=',
+                      i + 2 < n ? t[v & 63] : '=' };
+        sb_appendn(out, q, 4);
+    }
+}
+
+#define SHOT_ROOT "/user/av_contents/photo"
+#define MAX_SHOTS 64
+
+typedef struct {
+    char   path[512];
+    time_t mtime;
+} Shot;
+
+static void collect_images(const char *dir, int depth, Shot *shots, int *n)
+{
+    DIR *d = opendir(dir);
+    if (!d)
+        return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.')
+            continue;
+        char p[512];
+        snprintf(p, sizeof(p), "%s/%s", dir, e->d_name);
+        struct stat st;
+        if (stat(p, &st) < 0)
+            continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (depth > 0)
+                collect_images(p, depth - 1, shots, n);
+            continue;
+        }
+        size_t l = strlen(e->d_name);
+        if (l < 5 || (strcasecmp(e->d_name + l - 4, ".jpg") && strcasecmp(e->d_name + l - 4, ".png") &&
+                      strcasecmp(e->d_name + l - 5, ".jpeg")))
+            continue;
+        // Keep the newest MAX_SHOTS.
+        int slot = -1;
+        if (*n < MAX_SHOTS)
+            slot = (*n)++;
+        else {
+            int oldest = 0;
+            for (int i = 1; i < *n; i++)
+                if (shots[i].mtime < shots[oldest].mtime)
+                    oldest = i;
+            if (shots[oldest].mtime < st.st_mtime)
+                slot = oldest;
+        }
+        if (slot >= 0) {
+            snprintf(shots[slot].path, sizeof(shots[slot].path), "%s", p);
+            shots[slot].mtime = st.st_mtime;
+        }
+    }
+    closedir(d);
+}
+
+static int shot_cmp(const void *a, const void *b)
+{
+    time_t x = ((const Shot *)a)->mtime, y = ((const Shot *)b)->mtime;
+    return x < y ? 1 : x > y ? -1 : 0;
+}
+
+static int newest_shots(Shot *shots)
+{
+    int n = 0;
+    collect_images(SHOT_ROOT, 3, shots, &n);
+    qsort(shots, (size_t)n, sizeof(Shot), shot_cmp);
+    return n;
+}
+
+static int t_list_screenshots(const JVal *in, StrBuf *out)
+{
+    JVal *c = json_get(in, "count");
+    int want = (c && c->type == J_NUM && c->num > 0) ? (int)c->num : 10;
+    if (want > MAX_SHOTS)
+        want = MAX_SHOTS;
+    static Shot shots[MAX_SHOTS];
+    int n = newest_shots(shots);
+    if (!n)
+        return fail(out, "No screenshots found in " SHOT_ROOT " (take one with the SHARE button; "
+                         "this folder needs full file access).", NULL);
+    for (int i = 0; i < n && i < want; i++) {
+        struct tm *tm = gmtime(&shots[i].mtime);
+        sb_appendf(out, "%04d-%02d-%02d %02d:%02d UTC  %s\n", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                   tm->tm_hour, tm->tm_min, shots[i].path);
+    }
+    return 0;
+}
+
+#define MAX_IMAGE_BYTES (3 * 1024 * 1024 + 512 * 1024)
+
+static int t_view_image(const JVal *in, StrBuf *out, StrBuf *images)
+{
+    const char *path = in_str(in, "path");
+    static Shot shots[MAX_SHOTS];
+    if (path && !strcmp(path, "latest")) {
+        if (!newest_shots(shots))
+            return fail(out, "No screenshots found.", NULL);
+        path = shots[0].path;
+    }
+    if (bad_path(path))
+        return fail(out, "need an absolute path or latest", NULL);
+    size_t l = strlen(path);
+    const char *mt = NULL;
+    if (l > 4 && !strcasecmp(path + l - 4, ".png"))
+        mt = "image/png";
+    else if ((l > 4 && !strcasecmp(path + l - 4, ".jpg")) || (l > 5 && !strcasecmp(path + l - 5, ".jpeg")))
+        mt = "image/jpeg";
+    if (!mt)
+        return fail(out, "only .jpg and .png images are supported", NULL);
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return fail_errno(out, "open", path);
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (n <= 0 || n > MAX_IMAGE_BYTES) {
+        fclose(f);
+        return fail(out, "image is empty or larger than 3.5 MB", NULL);
+    }
+    unsigned char *buf = malloc((size_t)n);
+    if (!buf || fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        fclose(f);
+        free(buf);
+        return fail(out, "could not read the image", NULL);
+    }
+    fclose(f);
+    if (images->len)
+        sb_appendc(images, ',');
+    sb_appendf(images, "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"%s\",\"data\":\"", mt);
+    base64_append(images, buf, (size_t)n);
+    sb_append(images, "\"}}");
+    free(buf);
+    sb_appendf(out, "Image %s attached.", path);
+    return 0;
+}
+
+static int title_id_ok(const char *t)
+{
+    if (!t || strlen(t) != 9)
+        return 0;
+    for (int i = 0; i < 4; i++)
+        if (t[i] < 'A' || t[i] > 'Z')
+            return 0;
+    for (int i = 4; i < 9; i++)
+        if (t[i] < '0' || t[i] > '9')
+            return 0;
+    return 1;
 }
 
 // ---- tools --------------------------------------------------------------
@@ -499,8 +702,64 @@ static int t_list_installed_apps(StrBuf *out)
     return 0;
 }
 
-int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out)
+int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out, StrBuf *images)
 {
+    if (!strcmp(name, "list_screenshots"))
+        return t_list_screenshots(in, out);
+    if (!strcmp(name, "view_image"))
+        return t_view_image(in, out, images);
+    if (!strcmp(name, "install_pkg")) {
+        const char *path = in_str(in, "path");
+        char cid[37];
+        const char *type;
+        unsigned long long size;
+        if (bad_path(path))
+            return fail(out, "need an absolute path to a .pkg file", NULL);
+        if (!pkg_read_info(path, cid, &type, &size))
+            return fail(out, "%s is not a PS4 package (bad header)", path);
+        char q[1200], sz[32];
+        human_size(size, sz, sizeof(sz));
+        snprintf(q, sizeof(q), "Install package\n%s\n%s, %s, %s ?", path, cid, type, sz);
+        if (!chat_ask_confirm(chat, q))
+            return fail(out, "The user declined.", NULL);
+        const char *slash = strrchr(path, '/');
+        return plat_install_pkg(path, cid, type, size, slash ? slash + 1 : path, out);
+    }
+    if (!strcmp(name, "uninstall_app")) {
+        const char *tid = in_str(in, "title_id");
+        if (!title_id_ok(tid))
+            return fail(out, "title_id must look like CUSA00001", NULL);
+        if (!confirm(chat, "UNINSTALL %s ?\nThe game or app is removed; save data stays.%s", tid, ""))
+            return fail(out, "The user declined.", NULL);
+        return plat_uninstall_app(tid, out);
+    }
+    if (!strcmp(name, "set_fan_threshold")) {
+        JVal *c = json_get(in, "celsius");
+        if (!c || c->type != J_NUM)
+            return fail(out, "celsius is required", NULL);
+        int t = (int)c->num;
+        if (t < 45 || t > 80)
+            return fail(out, "celsius must be between 45 and 80", NULL);
+        char q[200];
+        snprintf(q, sizeof(q), "Set the fan threshold to %d C ?\n(Lower means a louder fan.)", t);
+        if (!chat_ask_confirm(chat, q))
+            return fail(out, "The user declined.", NULL);
+        return plat_set_fan_threshold(t, out);
+    }
+    if (!strcmp(name, "send_payload")) {
+        const char *path = in_str(in, "path");
+        if (bad_path(path))
+            return fail(out, "need an absolute path to a payload .bin", NULL);
+        struct stat st;
+        if (stat(path, &st) < 0)
+            return fail_errno(out, "stat", path);
+        char q[1200], sz[32];
+        human_size((unsigned long long)st.st_size, sz, sizeof(sz));
+        snprintf(q, sizeof(q), "Run payload\n%s (%s) ?\nPayloads get full system access. Only run files you trust.", path, sz);
+        if (!chat_ask_confirm(chat, q))
+            return fail(out, "The user declined.", NULL);
+        return plat_send_payload(path, out);
+    }
     if (!strcmp(name, "get_system_info")) {
         plat_system_info(out);
         return 0;
@@ -525,7 +784,7 @@ int tools_run(Chat *chat, const char *name, const JVal *in, StrBuf *out)
         return t_list_installed_apps(out);
     if (!strcmp(name, "launch_app")) {
         const char *tid = in_str(in, "title_id");
-        if (!tid || strlen(tid) != 9)
+        if (!title_id_ok(tid))
             return fail(out, "title_id must look like CUSA00001", NULL);
         if (!confirm(chat, "Launch %s ?\nClaude for PS4 will close.%s", tid, ""))
             return fail(out, "The user declined.", NULL);

@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     chat_clear(&g_chat);
     g_cfg_ok = 0;
     chat_add(&g_chat, ROLE_NOTICE, "Not set up yet. Press Options to set up from your phone, or put a claude.ini on a USB drive (root folder).");
-    g_setup.active = 1;
+    g_setup.shown = 1;
     snprintf(g_setup.url, sizeof(g_setup.url), "http://192.168.1.100:8765/");
     snprintf(g_setup.pin, sizeof(g_setup.pin), "482913");
     render(&c, 0);

@@ -56,8 +56,9 @@ void sb_appendc(StrBuf *sb, char c)
 void sb_appendf(StrBuf *sb, const char *fmt, ...)
 {
     va_list ap;
+    char probe[1];
     va_start(ap, fmt);
-    int n = vsnprintf(NULL, 0, fmt, ap);
+    int n = vsnprintf(probe, sizeof(probe), fmt, ap);
     va_end(ap);
     if (n <= 0)
         return;

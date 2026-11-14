@@ -1,6 +1,8 @@
 # Claude for PS4
 
-A native PS4 homebrew app (jailbroken console, GoldHEN) for chatting with Claude through the Anthropic API. Claude can also use console tools: it can read system info, browse and manage files, find .pkg files, list and launch installed apps, and show notifications. Anything that writes, moves, deletes or launches shows a confirm box on screen first. Nothing happens unless you press Cross.
+A native PS4 homebrew app (jailbroken console, GoldHEN) for chatting with Claude through the Anthropic API. Claude can also use console tools: it can read system info, browse and manage files, install and uninstall .pkg files, list and launch apps, set the fan threshold, look at your screenshots, and send payloads to GoldHEN BinLoader. Anything that writes, installs, deletes, launches or runs shows a confirm box first (on the TV, or on your phone if you use the phone remote). Nothing happens unless you allow it.
+
+You can also chat from your phone: the PS4 serves a small web page on your home network.
 
 Built with the OpenOrbis PS4 toolchain, SDL2 for the framebuffer, stb_truetype for text, the system HTTPS library (libSceHttp) with streamed replies, and the system on-screen keyboard (which also accepts a USB keyboard).
 
@@ -8,7 +10,7 @@ Built with the OpenOrbis PS4 toolchain, SDL2 for the framebuffer, stb_truetype f
 
 1. Install `IV0000-CLDE00001_00-CLAUDEFORPS40000.pkg` with GoldHEN (Debug Settings > Package Installer, or a remote pkg sender).
 2. Start "Claude for PS4". The first time, it shows a QR code and a PIN.
-3. Scan the code with your phone (same Wi-Fi), type the PIN, and pick how the PS4 reaches Claude (see below). Press Options any time to change it.
+3. Scan the code with your phone (same Wi-Fi), type the PIN, and pick how the PS4 reaches Claude (see below). Press Options any time to show the code again.
 
 Settings are saved to `/data/claude/claude.ini`. You can also write that file yourself (see `claude.ini.example`) or put a `claude.ini` in the root of a USB drive. Your key is never built into the app.
 
@@ -19,7 +21,7 @@ Settings are saved to `/data/claude/claude.ini`. You can also write that file yo
 | What you need | An API key from console.anthropic.com | A PC on the same network with Claude Code signed in to your Claude account, running `tools/claude-bridge.py` |
 | Billing | Pay per use on your API account | Uses your Claude plan's usage limits |
 | PC must be on | No | Yes |
-| Console tools (files, apps, system info) | Yes | No, chat only |
+| Console tools (files, apps, pkg install, screenshots) | Yes | No, chat only |
 | Model | Any API model (default claude-opus-5-5) | Whatever Claude Code uses, or `--model` on the bridge |
 
 The PS4 cannot sign in to claude.ai directly: Anthropic does not let third-party apps use claude.ai account logins. The bridge stays within the rules by running the official Claude Code CLI on your own PC with your own login, and only passes text between it and the PS4.
@@ -35,6 +37,17 @@ python3 tools/claude-bridge.py            # add --model opus or sonnet if you li
 
 It prints a bridge address (for example `http://192.168.1.50:8787`) and a pairing code. On the PS4 press Options, open the page on your phone, choose "PC bridge" and enter both. Allow port 8787 in the PC firewall if it has one. Claude Code's own tools are turned off in the bridge (`--tools ""`), so the PS4 cannot make it run commands on your PC. Each PS4 chat maps to one Claude Code session, kept in `~/.config/claude-ps4-bridge/`.
 
+## Phone remote
+
+The phone page keeps running while the app is open. Press Options to see the QR code and PIN, open the page and sign in with the PIN. Each PIN signs in one phone, and the phone stays signed in until the app restarts (up to 4 phones). From the phone you can:
+
+- chat (the reply appears on the phone and on the TV)
+- Allow or Deny a confirm box
+- stop a reply, start a new chat
+- change settings
+
+Five wrong PINs make a new one appear on the TV.
+
 Both the phone page and the bridge use plain HTTP on your home network, protected by the PIN and the pairing code. Use them only on a network you trust.
 
 ## Controls
@@ -45,10 +58,10 @@ Both the phone page and the bridge use plain HTTP on your home network, protecte
 | Circle | Stop the reply that is streaming |
 | Square | New chat |
 | Triangle | Reload claude.ini |
-| Options | Phone setup (QR code and PIN) |
+| Options | Phone page (QR code and PIN) |
 | Up / Down, right stick | Scroll |
 | L1 / R1 | Scroll one page |
-| Confirm box | Cross allows, Circle denies |
+| Confirm box | Cross allows, Circle denies (or Allow/Deny on the phone) |
 
 Each chat is saved as text to `/data/claude/chats/`.
 
@@ -61,7 +74,12 @@ Each chat is saved as text to `/data/claude/chats/`.
 | find_pkg_files on /mnt/usb0, /mnt/usb1, /data | no |
 | list_installed_apps (title ID and name) | no |
 | show_notification | no |
+| list_screenshots, view_image (JPEG/PNG up to 3.5 MB, "latest" for the newest screenshot) | no |
 | write_text_file, make_directory, copy_path, move_path, delete_path | yes |
+| install_pkg (reads the pkg header, queues the install in Downloads) | yes |
+| uninstall_app (save data stays) | yes |
+| set_fan_threshold (45 to 80 C, resets on reboot) | yes |
+| send_payload (.bin to GoldHEN BinLoader, port 9090) | yes |
 | launch_app (closes this app) | yes |
 
 `/system`, `/system_ex`, `/preinst`, `/update`, `/dev` and the top-level folders themselves (`/data`, `/user`, `/mnt/usb0`) can never be written or deleted, even with a confirm.
@@ -88,16 +106,16 @@ make -C tests OO_PS4_TOOLCHAIN=/path/to/PS4Toolchain
 
 ## Status
 
-Phase 1 plus phone setup and the PC bridge. Built and tested off-console (JSON, stream parsing, request body, tools, word wrap, UI render), not yet run on hardware.
+Version 01.10. Chat through the PC bridge is confirmed on a real PS4 (CUH-7016B, firmware 14.00, GoldHEN). API key mode, the console tools and the phone remote are tested off-console (host tests, UI and phone page previews) but not yet on hardware. pkg install, uninstall, fan control and payloads use the common homebrew system calls; tell us if one fails on your firmware.
 
-Planned for Phase 2:
-- Install .pkg files from USB (AppInstUtil / BGFT), delete installed apps
-- Fan threshold control (GoldHEN / ICC)
-- Screenshot Q&A: send a captured screenshot to Claude
-- Send and run payloads (for example Linux boot)
+Requests that fail before any reply text (no connection, rate limited, overloaded) are retried twice, after 2 and 4 seconds. At start the app warns if the clock looks wrong, since HTTPS needs the right date.
+
+Planned:
+- Saved chats you can reopen, Markdown rendering
 - Crash log reader shortcuts
-- Phone remote: a web page served by the PS4 for chatting from a phone
-- Saved chats you can reopen, Markdown rendering, voice input later
+- Voice input
+
+See CHANGELOG.md for what changed.
 
 ## Licenses
 
