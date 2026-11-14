@@ -1,12 +1,16 @@
-<div class=top><svg class=mark viewBox="0 0 30 30"><rect width=30 height=30 rx=8 fill="#d97757"/><rect x=6 y=7 width=18 height=12 rx=4 fill="#fff7f0"/><path d="M10 19v5l5-5z" fill="#fff7f0"/><circle cx=11 cy=13 r=1.6 fill="#d97757"/><circle cx=15 cy=13 r=1.6 fill="#d97757"/><circle cx=19 cy=13 r=1.6 fill="#d97757"/></svg>
+<div class=top><button class="ib mb" id=mb aria-label="Chats"><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.2 stroke-linecap=round><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><svg class=mark viewBox="0 0 30 30"><rect width=30 height=30 rx=8 fill="#d97757"/><rect x=6 y=7 width=18 height=12 rx=4 fill="#fff7f0"/><path d="M10 19v5l5-5z" fill="#fff7f0"/><circle cx=11 cy=13 r=1.6 fill="#d97757"/><circle cx=15 cy=13 r=1.6 fill="#d97757"/><circle cx=19 cy=13 r=1.6 fill="#d97757"/></svg>
 <div class=name>Claude</div><button class=ib id=nb>New chat</button><a class=ib href=/settings>Settings</a></div>
+<div class=shade id=sh></div><nav class=drawer id=dr><div class=dh>Chats</div>
+<button class=dnew id=dn>+ New chat</button><div class=dl>Recents</div><div id=rl class=rl></div>
+<div class=prof><div class=av id=av>?</div><div class=pn><div id=pn>PS4 user</div><div id=ps class=hint></div></div></div>
+<button class=lo id=lo>Log out</button></nav>
 <div class=wrap><div id=hello class=hello><svg class=mark style="width:48px;height:48px" viewBox="0 0 30 30"><rect width=30 height=30 rx=8 fill="#d97757"/><rect x=6 y=7 width=18 height=12 rx=4 fill="#fff7f0"/><path d="M10 19v5l5-5z" fill="#fff7f0"/><circle cx=11 cy=13 r=1.6 fill="#d97757"/><circle cx=15 cy=13 r=1.6 fill="#d97757"/><circle cx=19 cy=13 r=1.6 fill="#d97757"/></svg>
 <h2 id=greet>Hello</h2><p>Chatting through your PS4.</p></div><div id=log></div><div id=think class=think style="display:none"><i></i><i></i><i></i>&nbsp;Thinking</div></div>
 <div class=dock><div class=comp><textarea id=t rows=1 placeholder="Reply to Claude..."></textarea>
 <div class=row><select class=sel id=ms aria-label=Model></select><select class=sel id=es aria-label=Effort></select><span class=sp></span>
 <button class=go id=go aria-label=Send><svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.4 stroke-linecap=round stroke-linejoin=round><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div>
 <div class=st id=st>Connecting...</div></div>
-<div class=modal id=cf><div class=card><h3>Allow this action?</h3><pre id=cft></pre><div class=row>
+<div class=modal id=cf><div class=card><h3 id=cfh>Allow this action?</h3><pre id=cft></pre><div class=row>
 <button class="btn pri" id=ya>Allow</button><button class="btn sec" id=na>Deny</button></div></div></div>
 <script>
 var n=0,g=-1,busy=0,ready=0,bridge=-1,cur={},$=function(i){return document.getElementById(i)},log=$('log');
@@ -39,6 +43,14 @@ function setm(){post('/api/model','model='+encodeURIComponent($('ms').value)+'&e
 $('go').onclick=send;$('t').oninput=grow;$('ms').onchange=setm;$('es').onchange=setm;
 $('t').onkeydown=function(e){if(e.key=='Enter'&&!e.shiftKey&&window.innerWidth>700){e.preventDefault();send()}};
 $('nb').onclick=function(){if(confirm('Start a new chat?'))post('/api/new','')};
+function drawer(o){$('dr').className=o?'drawer open':'drawer';$('sh').style.display=o?'block':'none';if(o)chats()}
+function chats(){fetch('/api/chats').then(function(r){return r.json()}).then(function(j){var h='';
+j.chats.forEach(function(c){h+='<button class="rc'+(c.id==j.current?' cur':'')+'" data-id="'+esc(c.id)+'">'+esc(c.title)+'</button>'});
+$('rl').innerHTML=h||'<div class=hint>No saved chats yet</div>'}).catch(function(){})}
+$('mb').onclick=function(){drawer(1)};$('sh').onclick=function(){drawer(0)};
+$('dn').onclick=function(){drawer(0);post('/api/new','')};
+$('rl').onclick=function(e){var b=e.target.closest('.rc');if(!b)return;drawer(0);post('/api/open','id='+encodeURIComponent(b.getAttribute('data-id')))};
+$('lo').onclick=function(){drawer(0);post('/api/logout','')};
 $('ya').onclick=function(){post('/api/confirm','yes')};$('na').onclick=function(){post('/api/confirm','no')};
 var SEND='<svg width=18 height=18 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.4 stroke-linecap=round stroke-linejoin=round><path d="M12 19V5M5 12l7-7 7 7"/></svg>',STOP='<svg width=14 height=14 viewBox="0 0 14 14"><rect width=14 height=14 rx=3 fill=currentColor /></svg>';
 function poll(){fetch('/api/state?n='+n+'&g='+g).then(function(r){if(r.status==401){location.reload();return}return r.json()})
@@ -51,7 +63,8 @@ $('think').style.display=j.busy&&(!j.msgs.length||j.msgs[j.msgs.length-1].r!='a'
 if(bridge!==j.bridge||cur.m!==j.model||cur.e!==j.effort){bridge=j.bridge;cur={m:j.model,e:j.effort};opts($('ms'),j.bridge?M.br:M.api,j.model);opts($('es'),E,j.effort)}
 $('st').textContent=!j.ready?'Not set up yet: open Settings.':j.bridge?'Through your PC bridge':'Through your PS4, console tools on';
 var go=$('go');go.disabled=!j.ready;go.className=busy?'go stop':'go';go.innerHTML=busy?STOP:SEND;go.setAttribute('aria-label',busy?'Stop':'Send');
-var cf=$('cf');if(j.confirm!==null){cf.style.display='flex';$('cft').textContent=j.confirm}else cf.style.display='none';
+var cf=$('cf');if(j.confirm!==null){cf.style.display='flex';$('cft').textContent=j.confirm;$('cfh').textContent=j.confirm_title;$('ya').textContent=j.confirm_yes;$('na').textContent=j.confirm_no}else cf.style.display='none';
+$('pn').textContent=j.profile||'PS4 user';$('ps').textContent=j.profile_sub||'';$('av').textContent=(j.profile||'?').charAt(0).toUpperCase();$('lo').style.display=j.ready?'block':'none';
 if(atEnd&&j.msgs.length)window.scrollTo(0,document.body.scrollHeight)})
 .catch(function(){$('st').textContent='PS4 not reachable'})}
 poll();setInterval(poll,1000);

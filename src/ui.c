@@ -277,7 +277,37 @@ static void draw_msg(Canvas *c, const Msg *m, int y, const Rect *view, int last_
 
 // ---- sidebar ----------------------------------------------------------------
 
-static void side_row(Canvas *c, int y, int icon, const char *label, const char *key, int button)
+SideNav      g_side;
+HistoryEntry g_recent[HISTORY_MAX];
+int          g_recent_count;
+char         g_chat_id[HISTORY_ID_MAX];
+char         g_profile[96];
+char         g_profile_sub[96];
+
+int side_count(void)
+{
+    return g_recent_count + (g_cfg_ok ? 1 : 0);
+}
+
+// Draws s cut with "..." to fit max_w pixels.
+static void text_fit(Canvas *c, Font *f, int x, int y, const char *s, int max_w, uint32_t col)
+{
+    int len = (int)strlen(s);
+    if (font_text_width(f, s, len) <= max_w) {
+        font_draw(f, c, x, y, s, len, col, NULL);
+        return;
+    }
+    int dots = text_w(f, "...");
+    while (len > 0 && font_text_width(f, s, len) + dots > max_w) {
+        len--;
+        while (len > 0 && ((unsigned char)s[len] & 0xC0) == 0x80)
+            len--;
+    }
+    int x2 = font_draw(f, c, x, y, s, len, col, NULL);
+    text(c, f, x2, y, "...", col);
+}
+
+static void side_row(Canvas *c, int y, const char *label, const char *sub, const char *key, int button)
 {
     int x = 32;
     canvas_round(c, (Rect){ x, y, SIDEBAR_W - 64, 60 }, 14, COL_SIDEROW, NULL);
@@ -288,60 +318,115 @@ static void side_row(Canvas *c, int y, int icon, const char *label, const char *
     } else {
         lx = x + 12 + draw_key(c, x + 12, y + 14, key) + 16;
     }
-    (void)icon;
-    text(c, &g_small, lx, y + (60 - g_small.line_h) / 2, label, COL_TEXT);
+    if (sub) {
+        text(c, &g_small, lx, y + 2, label, COL_TEXT);
+        text_fit(c, &g_tiny, lx, y + 2 + g_small.line_h - 4, sub, SIDEBAR_W - 32 - lx - 12, COL_FAINT);
+    } else {
+        text(c, &g_small, lx, y + (60 - g_small.line_h) / 2, label, COL_TEXT);
+    }
 }
+
+// A round avatar with the first letter of the name.
+static void draw_avatar(Canvas *c, int x, int y, int s, const char *name)
+{
+    canvas_round(c, (Rect){ x, y, s, s }, s / 2, 0x5A4A42, NULL);
+    char first[8] = "?";
+    if (name && name[0]) {
+        int i = 0;
+        utf8_next(name, (int)strlen(name), &i);
+        snprintf(first, sizeof(first), "%.*s", i, name);
+        if (first[0] >= 'a' && first[0] <= 'z')
+            first[0] = (char)(first[0] - 32);
+    }
+    int w = text_w(&g_body, first);
+    text(c, &g_body, x + (s - w) / 2, y + (s - g_body.line_h) / 2, first, 0xFFF7F0);
+}
+
+#define RECENT_Y     470
+#define RECENT_ROW   46
+#define PROFILE_Y    (SCREEN_H - 172)
 
 static void draw_sidebar(Canvas *c)
 {
     canvas_fill(c, (Rect){ 0, 0, SIDEBAR_W, SCREEN_H }, COL_SIDEBAR, NULL);
     canvas_fill(c, (Rect){ SIDEBAR_W - 1, 0, 1, SCREEN_H }, COL_LINE, NULL);
-    draw_mark(c, 36, 40, 56);
-    text(c, &g_head, 110, 40, "Claude", COL_TEXT);
-    text(c, &g_tiny, 112, 40 + g_head.line_h - 4, "for PlayStation 4", COL_DIM);
+    draw_mark(c, 36, 36, 56);
+    text(c, &g_head, 110, 34, "Claude", COL_TEXT);
+    text(c, &g_tiny, 112, 34 + g_head.line_h - 4, "for PlayStation 4  \xC2\xB7  " APP_VERSION, COL_DIM);
 
-    int y = 150;
-    side_row(c, y, 0, "New chat", NULL, BTN_SQUARE);
-    y += 72;
+    int y = 132;
+    side_row(c, y, "New chat", NULL, NULL, BTN_SQUARE);
+    y += 70;
     if (g_cfg_ok) {
-        side_row(c, y, 0, "Model and effort", "R2", -1);
-        y += 72;
+        side_row(c, y, "Model and effort", NULL, "R2", -1);
+        y += 70;
     }
-    side_row(c, y, 0, "Use your phone", "OPTIONS", -1);
-    y += 72;
-    side_row(c, y, 0, "Reload settings", NULL, BTN_TRIANGLE);
-    y += 100;
-
-    text(c, &g_tiny, 40, y, "CONNECTION", COL_FAINT);
-    y += g_tiny.line_h + 12;
-    char buf[200];
-    if (!g_cfg_ok) {
-        text(c, &g_small, 40, y, "Not set up yet", COL_NOTICE);
-        y += g_small.line_h + 8;
-    } else {
-        text(c, &g_small, 40, y, g_cfg.bridge ? "PC bridge (Claude account)" : "API key", COL_TEXT);
-        y += g_small.line_h + 8;
-        snprintf(buf, sizeof(buf), "%s, %s effort", active_model_name(), effort_name(g_cfg.effort));
-        text(c, &g_small, 40, y, buf, COL_DIM);
-        y += g_small.line_h + 8;
-        const char *tools = g_cfg.bridge ? "Console tools off (chat only)"
-                          : plat_jailbroken() ? "Console tools on" : "Tools limited (sandboxed)";
-        text(c, &g_small, 40, y, tools, COL_DIM);
-        y += g_small.line_h + 8;
-    }
+    char url[80] = "";
     if (g_setup.active && g_setup.url[0]) {
-        snprintf(buf, sizeof(buf), "Phone: %s", g_setup.url + 7);  // without http://
-        size_t n = strlen(buf);
-        if (n && buf[n - 1] == '/')
-            buf[n - 1] = 0;
-        text(c, &g_small, 40, y, buf, COL_DIM);
+        snprintf(url, sizeof(url), "%s", g_setup.url + 7);  // without http://
+        size_t n = strlen(url);
+        if (n && url[n - 1] == '/')
+            url[n - 1] = 0;
+    }
+    side_row(c, y, "Use your phone", url[0] ? url : NULL, "OPTIONS", -1);
+    y += 70;
+    side_row(c, y, "Reload settings", NULL, NULL, BTN_TRIANGLE);
+
+    // Recents
+    int ry = RECENT_Y;
+    text(c, &g_tiny, 40, ry - g_tiny.line_h - 10, "RECENTS", COL_FAINT);
+    if (!g_side.focus && g_recent_count) {
+        int kw = text_w(&g_tiny, "D-pad Left") + 20;
+        draw_key(c, SIDEBAR_W - 40 - kw, ry - g_tiny.line_h - 14, "D-pad Left");
+    }
+    int rows = (PROFILE_Y - 92 - ry) / RECENT_ROW;
+    if (!g_recent_count) {
+        text(c, &g_small, 40, ry + 8, "No saved chats yet", COL_FAINT);
+    } else {
+        int top = 0;
+        if (g_side.focus && g_side.sel < g_recent_count && g_side.sel >= rows)
+            top = g_side.sel - rows + 1;
+        for (int i = top; i < g_recent_count && i < top + rows; i++, ry += RECENT_ROW) {
+            int is_sel = g_side.focus && g_side.sel == i;
+            int is_cur = g_chat_id[0] && !strcmp(g_chat_id, g_recent[i].id);
+            if (is_sel)
+                canvas_round_border(c, (Rect){ 28, ry, SIDEBAR_W - 56, RECENT_ROW - 4 }, 12, 2, COL_ACCENT,
+                                    COL_SIDEROW, NULL);
+            else if (is_cur)
+                canvas_round(c, (Rect){ 28, ry, SIDEBAR_W - 56, RECENT_ROW - 4 }, 12, COL_SIDEROW, NULL);
+            text_fit(c, &g_small, 44, ry + (RECENT_ROW - 4 - g_small.line_h) / 2, g_recent[i].title,
+                     SIDEBAR_W - 100, is_sel || is_cur ? COL_TEXT : COL_DIM);
+        }
+        if (top + rows < g_recent_count)
+            text(c, &g_tiny, 44, ry + 2, "More below", COL_FAINT);
     }
 
-    int by = SCREEN_H - 150;
-    canvas_fill(c, (Rect){ 32, by - 20, SIDEBAR_W - 64, 1 }, COL_LINE, NULL);
-    text(c, &g_tiny, 40, by, "Up/Down, L1/R1, right stick: scroll", COL_FAINT);
-    text(c, &g_tiny, 40, by + g_tiny.line_h + 6, "Circle: stop a reply", COL_FAINT);
-    text(c, &g_tiny, 40, by + 2 * (g_tiny.line_h + 6), "Version " APP_VERSION, COL_FAINT);
+    // Hint above the profile
+    int hy = PROFILE_Y - 44;
+    if (g_side.focus)
+        text(c, &g_tiny, 40, hy, "Cross: open   Circle: back", COL_FAINT);
+    else
+        text(c, &g_tiny, 40, hy, "Up/Down, sticks: scroll   Circle: stop", COL_FAINT);
+
+    // Profile and Log out
+    canvas_fill(c, (Rect){ 32, PROFILE_Y, SIDEBAR_W - 64, 1 }, COL_LINE, NULL);
+    int py = PROFILE_Y + 18;
+    draw_avatar(c, 36, py, 56, g_profile);
+    text_fit(c, &g_small, 108, py - 2, g_profile[0] ? g_profile : "PS4 user", SIDEBAR_W - 140, COL_TEXT);
+    text_fit(c, &g_tiny, 108, py + g_small.line_h - 2, g_profile_sub, SIDEBAR_W - 140, COL_DIM);
+    if (g_cfg_ok) {
+        int ly = py + 74;
+        int is_sel = g_side.focus && g_side.sel == g_recent_count;
+        if (is_sel)
+            canvas_round_border(c, (Rect){ 28, ly, SIDEBAR_W - 56, 50 }, 12, 2, COL_ACCENT, COL_SIDEROW, NULL);
+        // A door with an arrow.
+        int ix = 44, iy = ly + 13;
+        canvas_round_border(c, (Rect){ ix, iy, 18, 24 }, 3, 2, is_sel ? COL_TEXT : COL_DIM, is_sel ? COL_SIDEROW : COL_SIDEBAR, NULL);
+        line(c, ix + 12, iy + 12, ix + 28, iy + 12, 3, is_sel ? COL_TEXT : COL_DIM);
+        line(c, ix + 22, iy + 6, ix + 28, iy + 12, 3, is_sel ? COL_TEXT : COL_DIM);
+        line(c, ix + 22, iy + 18, ix + 28, iy + 12, 3, is_sel ? COL_TEXT : COL_DIM);
+        text(c, &g_small, 88, ly + (50 - g_small.line_h) / 2, "Log out", is_sel ? COL_TEXT : COL_DIM);
+    }
 }
 
 // ---- composer ---------------------------------------------------------------
@@ -413,7 +498,7 @@ static void draw_confirm(Canvas *c)
     int n = layout_wrap(&g_body, t, (int)strlen(t), 980, &starts, &lens);
     int h = 130 + n * g_body.line_h + 170 + (g_setup.active ? 40 : 0);
     Rect r = card(c, 1120, h);
-    text(c, &g_head, r.x + 64, r.y + 44, "Allow this action?", COL_TEXT);
+    text(c, &g_head, r.x + 64, r.y + 44, g_chat.confirm_title[0] ? g_chat.confirm_title : "Allow this action?", COL_TEXT);
     int y = r.y + 130;
     canvas_round(c, (Rect){ r.x + 48, y - 18, r.w - 96, n * g_body.line_h + 36 }, 18, COL_SIDEBAR, NULL);
     for (int i = 0; i < n; i++, y += g_body.line_h)
@@ -422,8 +507,8 @@ static void draw_confirm(Canvas *c)
     free(lens);
     y += 50;
     int x = r.x + 64;
-    x += pill(c, x, y, BTN_CROSS, "Allow", 1) + 24;
-    pill(c, x, y, BTN_CIRCLE, "Deny", 0);
+    x += pill(c, x, y, BTN_CROSS, g_chat.confirm_yes[0] ? g_chat.confirm_yes : "Allow", 1) + 24;
+    pill(c, x, y, BTN_CIRCLE, g_chat.confirm_no[0] ? g_chat.confirm_no : "Deny", 0);
     if (g_setup.active)
         text(c, &g_tiny, r.x + 64, y + 96, "You can also answer on your phone.", COL_FAINT);
 }

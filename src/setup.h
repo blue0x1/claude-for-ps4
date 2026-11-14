@@ -8,6 +8,7 @@
 
 #include "chat.h"
 #include "config.h"
+#include "history.h"
 #include "strbuf.h"
 
 #define SETUP_PORT 8765
@@ -32,6 +33,13 @@ typedef struct {
     // Requests from the phone, done by the UI thread.
     volatile int    want_send, want_stop, want_new;
     char            send_text[REMOTE_TEXT_MAX];
+    volatile int    want_logout;                // asks on the TV (and phone) first
+    char            want_open[HISTORY_ID_MAX];  // saved chat to open ("" = none)
+    // Shown on the phone page.
+    HistoryEntry    chats[HISTORY_MAX];
+    int             chat_count;
+    char            chat_cur[HISTORY_ID_MAX];
+    char            profile[96], profile_sub[96];
     pthread_mutex_t lock;
     int             listen_fd;
 } Setup;
@@ -47,6 +55,15 @@ void setup_set_config(Setup *s, const Config *c, int ok);
 int  setup_take_config(Setup *s, Config *cfg);
 // Takes a message typed on the phone. Returns 1 and fills text if there is one.
 int  setup_take_text(Setup *s, char *text, size_t len);
+
+// Tells the page the saved chats and which one is open.
+void setup_set_chats(Setup *s, const HistoryEntry *list, int n, const char *current);
+// Tells the page the profile name shown at the bottom left.
+void setup_set_profile(Setup *s, const char *name, const char *sub);
+// Takes a chat the phone asked to open. Returns 1 and fills id if there is one.
+int  setup_take_open(Setup *s, char id[HISTORY_ID_MAX]);
+// Signs every phone out and makes a new PIN (after Log out).
+void setup_sign_out_all(Setup *s);
 
 // Handles one raw HTTP request (portable, used by tests). Fills resp with a
 // full HTTP response. Returns 1 if settings were saved.

@@ -72,6 +72,48 @@ int setup_take_text(Setup *s, char *text, size_t len)
     return got;
 }
 
+void setup_set_chats(Setup *s, const HistoryEntry *list, int n, const char *current)
+{
+    pthread_mutex_lock(&s->lock);
+    if (n > HISTORY_MAX)
+        n = HISTORY_MAX;
+    if (n > 0)
+        memcpy(s->chats, list, sizeof(HistoryEntry) * (size_t)n);
+    s->chat_count = n > 0 ? n : 0;
+    snprintf(s->chat_cur, sizeof(s->chat_cur), "%s", current ? current : "");
+    pthread_mutex_unlock(&s->lock);
+}
+
+void setup_set_profile(Setup *s, const char *name, const char *sub)
+{
+    pthread_mutex_lock(&s->lock);
+    snprintf(s->profile, sizeof(s->profile), "%s", name ? name : "");
+    snprintf(s->profile_sub, sizeof(s->profile_sub), "%s", sub ? sub : "");
+    pthread_mutex_unlock(&s->lock);
+}
+
+int setup_take_open(Setup *s, char id[HISTORY_ID_MAX])
+{
+    int got = 0;
+    pthread_mutex_lock(&s->lock);
+    if (s->want_open[0]) {
+        snprintf(id, HISTORY_ID_MAX, "%s", s->want_open);
+        s->want_open[0] = 0;
+        got = 1;
+    }
+    pthread_mutex_unlock(&s->lock);
+    return got;
+}
+
+void setup_sign_out_all(Setup *s)
+{
+    pthread_mutex_lock(&s->lock);
+    memset(s->sessions, 0, sizeof(s->sessions));
+    s->next_session = 0;
+    setup_new_pin(s);
+    pthread_mutex_unlock(&s->lock);
+}
+
 static void html_escape(StrBuf *out, const char *s)
 {
     for (; *s; s++) {
@@ -360,7 +402,10 @@ static void build_state(Setup *s, const char *req, StrBuf *json)
     int have = query_int(req, "n", 0), gen = query_int(req, "g", -1);
     pthread_mutex_lock(&s->lock);
     int ready = s->cfg_ok, bridge = s->cfg.bridge;
-    char model[96], effort[16];
+    char model[96], effort[16], profile[96], profile_sub[96], cur[HISTORY_ID_MAX];
+    snprintf(profile, sizeof(profile), "%s", s->profile);
+    snprintf(profile_sub, sizeof(profile_sub), "%s", s->profile_sub);
+    snprintf(cur, sizeof(cur), "%s", s->chat_cur);
     snprintf(model, sizeof(model), "%s", config_active_model(&s->cfg));
     snprintf(effort, sizeof(effort), "%s", s->cfg.effort);
     pthread_mutex_unlock(&s->lock);
@@ -375,11 +420,24 @@ static void build_state(Setup *s, const char *req, StrBuf *json)
     sb_append_json_string(json, model);
     sb_append(json, ",\"effort\":");
     sb_append_json_string(json, effort);
+    sb_append(json, ",\"profile\":");
+    sb_append_json_string(json, profile);
+    sb_append(json, ",\"profile_sub\":");
+    sb_append_json_string(json, profile_sub);
+    sb_append(json, ",\"chat\":");
+    sb_append_json_string(json, cur);
     sb_append(json, ",\"confirm\":");
-    if (c->confirm == CONFIRM_PENDING)
+    if (c->confirm == CONFIRM_PENDING) {
         sb_append_json_string(json, c->confirm_text);
-    else
+        sb_append(json, ",\"confirm_title\":");
+        sb_append_json_string(json, c->confirm_title[0] ? c->confirm_title : "Allow this action?");
+        sb_append(json, ",\"confirm_yes\":");
+        sb_append_json_string(json, c->confirm_yes[0] ? c->confirm_yes : "Allow");
+        sb_append(json, ",\"confirm_no\":");
+        sb_append_json_string(json, c->confirm_no[0] ? c->confirm_no : "Deny");
+    } else {
         sb_append(json, "null");
+    }
     sb_append(json, ",\"msgs\":[");
     for (int i = from; i < c->count; i++) {
         const Msg *m = &c->msgs[i];
@@ -527,6 +585,21 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
     } else if (is_req(req, "GET /api/state")) {
         build_state(s, req, &html);
         respond_json(resp, 200, "OK", html.data);
+    } else if (is_req(req, "GET /api/chats")) {
+        pthread_mutex_lock(&s->lock);
+        sb_append(&html, "{\"current\":");
+        sb_append_json_string(&html, s->chat_cur);
+        sb_append(&html, ",\"chats\":[");
+        for (int i = 0; i < s->chat_count; i++) {
+            sb_append(&html, i ? ",{\"id\":" : "{\"id\":");
+            sb_append_json_string(&html, s->chats[i].id);
+            sb_append(&html, ",\"title\":");
+            sb_append_json_string(&html, s->chats[i].title);
+            sb_appendc(&html, '}');
+        }
+        sb_append(&html, "]}");
+        pthread_mutex_unlock(&s->lock);
+        respond_json(resp, 200, "OK", html.data);
     } else if (api) {
         // Writes need a custom header, which other web pages cannot send
         // here without a CORS preflight that this server never allows.
@@ -587,6 +660,27 @@ int setup_handle_request(Setup *s, const char *req, size_t len, StrBuf *resp)
             respond_json(resp, 200, "OK", "{\"ok\":true}");
         } else if (is_req(req, "POST /api/new")) {
             s->want_new = 1;
+            respond_json(resp, 200, "OK", "{\"ok\":true}");
+        } else if (is_req(req, "POST /api/open")) {
+            char id[HISTORY_ID_MAX] = "";
+            form_get(body, "id", id, sizeof(id), 0);
+            int ok = 0;
+            pthread_mutex_lock(&s->lock);
+            for (int i = 0; i < s->chat_count && !ok; i++)
+                ok = history_id_ok(id) && !strcmp(s->chats[i].id, id);
+            if (ok && s->chat->busy)
+                ok = -1;
+            if (ok > 0)
+                snprintf(s->want_open, sizeof(s->want_open), "%s", id);
+            pthread_mutex_unlock(&s->lock);
+            if (ok > 0)
+                respond_json(resp, 200, "OK", "{\"ok\":true}");
+            else if (ok < 0)
+                respond_json(resp, 409, "Conflict", "{\"error\":\"Claude is still answering.\"}");
+            else
+                respond_json(resp, 404, "Not Found", "{\"error\":\"That chat was not found.\"}");
+        } else if (is_req(req, "POST /api/logout")) {
+            s->want_logout = 1;
             respond_json(resp, 200, "OK", "{\"ok\":true}");
         } else {
             respond_json(resp, 404, "Not Found", "{\"error\":\"not found\"}");

@@ -131,6 +131,7 @@ void chat_build_request(Chat *c, const Config *cfg, const char *tools_json, StrB
 int chat_ask_confirm(Chat *c, const char *text)
 {
     snprintf(c->confirm_text, sizeof(c->confirm_text), "%s", text);
+    c->confirm_title[0] = c->confirm_yes[0] = c->confirm_no[0] = 0;
     c->confirm = CONFIRM_PENDING;
     c->dirty = 1;
     while (c->confirm == CONFIRM_PENDING && !c->cancel)

@@ -158,6 +158,10 @@ int config_load(Config *cfg, char *err, int errlen)
         config_parse(cfg, buf);
         free(buf);
         snprintf(cfg->loaded_from, sizeof(cfg->loaded_from), "%s", CONFIG_PATHS[i]);
+        if (!cfg->api_key[0] && !cfg->bridge_token[0]) {
+            snprintf(err, (size_t)errlen, "Logged out. Press OPTIONS to set up again with your phone.");
+            return 0;
+        }
         if (cfg->bridge && (!cfg->bridge_url[0] || !cfg->bridge_token[0])) {
             snprintf(err, (size_t)errlen, "%s: mode=bridge needs bridge_url and bridge_token.", CONFIG_PATHS[i]);
             return 0;

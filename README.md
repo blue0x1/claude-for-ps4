@@ -75,9 +75,12 @@ Effort is Default, Low, Medium, High, Extra high or Max. Higher effort thinks lo
 | R2 | Pick the model and effort |
 | Up / Down, right stick | Scroll |
 | L1 / R1 | Scroll one page |
+| D-pad Left | Go to the sidebar: Up/Down picks a saved chat or Log out, Cross opens it, Circle goes back |
 | Confirm box | Cross allows, Circle denies (or Allow/Deny on the phone) |
 
-Each chat is saved as text to `/data/claude/chats/`.
+Each chat is saved to `/data/claude/chats/` as a readable `.txt` and a `.json` that lets you open it again from Recents and carry on. In bridge mode the chat continues in the same Claude Code session on your PC.
+
+The bottom left shows who is signed in: your Claude account name in bridge mode (the bridge reads it from `claude auth status`), or your PS4 user name in API key mode. Log out asks first, then removes the API key and the bridge pairing from `/data/claude/claude.ini`. Chats and other settings stay, and every phone has to sign in again with a new PIN. On the phone page, the menu button at the top left has the same chat list, profile and Log out.
 
 ## Tools Claude can use
 

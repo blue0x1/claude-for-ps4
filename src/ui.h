@@ -3,6 +3,7 @@
 #include "chat.h"
 #include "config.h"
 #include "font.h"
+#include "history.h"
 #include "setup.h"
 
 #define SCREEN_W 1920
@@ -57,6 +58,19 @@ int         picker_count(int col);
 const char *picker_value(int col, int row);
 int         picker_current(int col);   // -1 if the saved value is not in the list
 const char *effort_name(const char *effort);
+
+// Sidebar: saved chats and the Log out row, chosen with the D-pad.
+typedef struct {
+    int focus;   // 1 while the sidebar has the controller
+    int sel;     // 0..g_recent_count-1 chats, g_recent_count = Log out
+} SideNav;
+extern SideNav      g_side;
+extern HistoryEntry g_recent[HISTORY_MAX];
+extern int          g_recent_count;
+extern char         g_chat_id[HISTORY_ID_MAX];  // saved chat on screen ("" = not saved yet)
+extern char         g_profile[96];              // name shown at the bottom left
+extern char         g_profile_sub[96];
+int side_count(void);
 
 void ui_init(void);   // after the fonts are loaded
 void render(Canvas *c, int frame);

@@ -59,6 +59,20 @@ int main(int argc, char **argv)
     static uint32_t px[SCREEN_W * SCREEN_H];
     Canvas c = { px, SCREEN_W, SCREEN_H, SCREEN_W, 16, 8, 0, 0xFF000000 };
     char path[512];
+    static const char *const titles[] = {
+        "How much space is left on my PS4", "Write a short poem about rain", "Explain GoldHEN cheats menu",
+        "Best settings for RetroArch on PS4", "What is a .pkg file?", "Plan a weekend trip to Tunis",
+        "Fix my Python script that reads CSV files and crashes on empty lines", "Translate this to French",
+        "Ideas for a birthday gift", "Summarize this article",
+    };
+    for (int i = 0; i < 10; i++) {
+        snprintf(g_recent[i].id, HISTORY_ID_MAX, "chat-202611%02d-120000", 14 - i);
+        snprintf(g_recent[i].title, HISTORY_TITLE_MAX, "%s", titles[i]);
+    }
+    g_recent_count = 10;
+    snprintf(g_profile, sizeof(g_profile), "Red");
+    snprintf(g_profile_sub, sizeof(g_profile_sub), "red@example.com");
+    g_cfg.bridge = 1;
 
     render(&c, 0);
     snprintf(path, sizeof(path), "%s/preview-empty.png", outdir);
@@ -78,9 +92,30 @@ int main(int argc, char **argv)
              "curl ftp://192.168.1.100:2121/mnt/usb0/pkg/\n"
              "```\n"
              "Want me to back up your saves to the USB drive before you install anything?");
+    snprintf(g_chat_id, sizeof(g_chat_id), "chat-20261114-120000");
     render(&c, 0);
     snprintf(path, sizeof(path), "%s/preview-chat.png", outdir);
     save(&c, path);
+    g_side.focus = 1;
+    g_side.sel = 8;
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-recents.png", outdir);
+    save(&c, path);
+    g_side.sel = g_recent_count;
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-logout-row.png", outdir);
+    save(&c, path);
+    g_side.focus = 0;
+    g_chat.confirm = CONFIRM_PENDING;
+    snprintf(g_chat.confirm_text, sizeof(g_chat.confirm_text), "This removes the PC bridge pairing from claude.ini on this PS4. Your chats stay. Your Claude account on the PC stays signed in.");
+    snprintf(g_chat.confirm_title, sizeof(g_chat.confirm_title), "Log out?");
+    snprintf(g_chat.confirm_yes, sizeof(g_chat.confirm_yes), "Log out");
+    snprintf(g_chat.confirm_no, sizeof(g_chat.confirm_no), "Cancel");
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-logout.png", outdir);
+    save(&c, path);
+    g_chat.confirm = CONFIRM_NONE;
+    g_chat.confirm_title[0] = g_chat.confirm_yes[0] = g_chat.confirm_no[0] = 0;
     g_picker.open = 1;
     g_picker.col = 1;
     g_picker.row = 3;

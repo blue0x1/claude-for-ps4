@@ -15,6 +15,7 @@
 #include "../src/stream.h"
 #include "../src/tools.h"
 #include "../src/setup.h"
+#include "../src/history.h"
 
 static int fails;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
@@ -370,6 +371,36 @@ static void test_setup(void)
     snprintf(path, sizeof(path), "GET /api/state?n=2&g=%d", gen);
     req(&s, path, tok, NULL, NULL, &r);
     CHECK(strstr(r.data, "\"from\":0") && strstr(r.data, "\"count\":0"));
+    // Saved chats, open, profile and log out
+    HistoryEntry list[2] = { { "chat-20261114-052310", "Second chat" }, { "chat-20261113-101010", "First <chat>" } };
+    setup_set_chats(&s, list, 2, "chat-20261114-052310");
+    setup_set_profile(&s, "Red", "Claude account (PC bridge)");
+    req(&s, "GET /api/chats", tok, NULL, NULL, &r);
+    CHECK(strstr(r.data, "\"current\":\"chat-20261114-052310\"") && strstr(r.data, "First <chat>"));
+    req(&s, "GET /api/state?n=0&g=-1", tok, NULL, NULL, &r);
+    CHECK(strstr(r.data, "\"profile\":\"Red\"") && strstr(r.data, "\"chat\":\"chat-20261114-052310\""));
+    char oid[HISTORY_ID_MAX];
+    req(&s, "POST /api/open", tok, NULL, "id=chat-20261113-101010", &r);
+    CHECK(strstr(r.data, "403") && !setup_take_open(&s, oid));
+    req(&s, "POST /api/open", tok, "X-Claude-Remote: 1\r\n", "id=..%2Fclaude", &r);
+    CHECK(strstr(r.data, "404") && !setup_take_open(&s, oid));
+    req(&s, "POST /api/open", tok, "X-Claude-Remote: 1\r\n", "id=chat-20261199-000000", &r);
+    CHECK(strstr(r.data, "404"));
+    req(&s, "POST /api/open", tok, "X-Claude-Remote: 1\r\n", "id=chat-20261113-101010", &r);
+    CHECK(strstr(r.data, "200 OK") && setup_take_open(&s, oid) && !strcmp(oid, "chat-20261113-101010"));
+    CHECK(!setup_take_open(&s, oid));
+    req(&s, "POST /api/logout", tok, "X-Claude-Remote: 1\r\n", "", &r);
+    CHECK(s.want_logout);
+    s.want_logout = 0;
+    chat.confirm = CONFIRM_PENDING;
+    snprintf(chat.confirm_title, sizeof(chat.confirm_title), "Log out?");
+    req(&s, "GET /api/state?n=0&g=-1", tok, NULL, NULL, &r);
+    CHECK(strstr(r.data, "\"confirm_title\":\"Log out?\"") && strstr(r.data, "\"confirm_no\":\"Deny\""));
+    chat.confirm = CONFIRM_NONE;
+    chat.confirm_title[0] = 0;
+    setup_sign_out_all(&s);
+    req(&s, "GET /api/state", tok, NULL, NULL, &r);
+    CHECK(strstr(r.data, "401"));
     // Five wrong PINs make a new one
     snprintf(old_pin, sizeof(old_pin), "%s", s.pin);
     for (int i = 0; i < 5; i++)
@@ -378,8 +409,63 @@ static void test_setup(void)
     sb_free(&r);
 }
 
+static void test_history(void)
+{
+    const char *dir = "/tmp/claude-ps4-test/chats";
+    mkdir("/tmp/claude-ps4-test", 0777);
+    mkdir(dir, 0777);
+    CHECK(history_id_ok("chat-20261114-052310") && !history_id_ok("../x") && !history_id_ok("") &&
+          !history_id_ok("a/b") && !history_id_ok("a.json"));
+    char t[16];
+    history_title("\n  Hello there, how are you\nsecond", t, sizeof(t));
+    CHECK(!strcmp(t, "Hello there, ho"));
+    history_title("\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9", t, sizeof(t));
+    CHECK(strlen(t) == 14);
+
+    static Chat c;
+    chat_init(&c);
+    chat_add(&c, ROLE_USER, "What is a PS4?\n\nClaude:\ntricky");
+    chat_api_push(&c, "{\"role\":\"user\",\"content\":\"What is a PS4?\"}");
+    chat_add(&c, ROLE_ASSISTANT, "A game console.");
+    chat_api_push(&c, "{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"SIG\"},{\"type\":\"text\",\"text\":\"A game console.\"}]}");
+    chat_add(&c, ROLE_USER, "And a PS5?");
+    chat_api_push(&c, "{\"role\":\"user\",\"content\":\"And a PS5?\"}");  // unanswered
+    char conv[40];
+    snprintf(conv, sizeof(conv), "%s", c.conv_id);
+    CHECK(history_save(&c, dir, "chat-20261114-000002") == 0);
+    CHECK(history_save(&c, dir, "../evil") != 0);
+    // An old plain text chat and an empty one
+    FILE *f = fopen("/tmp/claude-ps4-test/chats/chat-20261113-000001.txt", "wb");
+    fputs("Note:\nSaved from your phone.\n\nYou:\nOld question\n\nClaude:\nOld answer\nline 2\n\n", f);
+    fclose(f);
+    f = fopen("/tmp/claude-ps4-test/chats/chat-20261112-000000.txt", "wb");
+    fputs("Note:\nnothing\n\n", f);
+    fclose(f);
+
+    HistoryEntry list[HISTORY_MAX];
+    int n = history_list(dir, list, HISTORY_MAX);
+    CHECK(n == 2);
+    CHECK(n == 2 && !strcmp(list[0].id, "chat-20261114-000002") && !strcmp(list[0].title, "What is a PS4?") &&
+          !strcmp(list[1].title, "Old question"));
+
+    static Chat d;
+    chat_init(&d);
+    CHECK(history_load(&d, dir, "chat-20261114-000002") == 0);
+    CHECK(d.count == 3 && !strcmp(d.msgs[0].text.data, "What is a PS4?\n\nClaude:\ntricky") &&
+          d.msgs[2].role == ROLE_USER);
+    CHECK(d.api_count == 2 && strstr(d.api[1], "\"signature\":\"SIG\"") && !strcmp(d.conv_id, conv));
+    CHECK(history_load(&d, dir, "chat-20261113-000001") == 0);
+    CHECK(d.count == 3 && d.msgs[0].role == ROLE_NOTICE && !strcmp(d.msgs[2].text.data, "Old answer\nline 2"));
+    CHECK(d.api_count == 2 && strstr(d.api[0], "Old question") && strstr(d.api[1], "\"assistant\""));
+    CHECK(history_load(&d, dir, "../../etc/passwd") != 0);
+    CHECK(history_load(&d, dir, "chat-20990101-000000") != 0);
+    chat_clear(&c);
+    chat_clear(&d);
+}
+
 int main(void)
 {
+    test_history();
     test_bridge_stream();
     test_setup();
     test_stream();

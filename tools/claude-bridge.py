@@ -62,6 +62,53 @@ def get_token(regenerate):
     return token
 
 
+_account = None
+_account_lock = threading.Lock()
+
+
+def _find(obj, keys):
+    """First non-empty string value for any of keys, searching nested dicts."""
+    if isinstance(obj, dict):
+        for k in keys:
+            v = obj.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        for v in obj.values():
+            found = _find(v, keys)
+            if found:
+                return found
+    return ""
+
+
+def account_info(claude_bin):
+    """Name and email of the Claude account the CLI is signed in with.
+
+    Uses `claude auth status`, then the CLI's own config file. Cached."""
+    global _account
+    with _account_lock:
+        if _account is not None:
+            return _account
+        info = {}
+        try:
+            out = subprocess.run([claude_bin, "auth", "status", "--json"], capture_output=True, text=True,
+                                 timeout=20).stdout
+            info = json.loads(out or "{}")
+        except (OSError, ValueError, subprocess.SubprocessError):
+            info = {}
+        name = _find(info, ("displayName", "name", "userName"))
+        email = _find(info, ("email", "emailAddress", "userEmail"))
+        if not (name or email):
+            try:
+                cfg = json.loads((Path.home() / ".claude.json").read_text())
+                acct = cfg.get("oauthAccount") or {}
+                name = _find(acct, ("displayName", "name"))
+                email = _find(acct, ("emailAddress", "email"))
+            except (OSError, ValueError):
+                pass
+        _account = {"name": name[:80], "email": email[:80]}
+        return _account
+
+
 def lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -126,6 +173,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self.send_json(200, {"ok": True, "service": "claude-ps4-bridge"})
+        elif self.path.rstrip("/") == "/v1/whoami":
+            # The profile name shown on the PS4 (needs the pairing code).
+            if not secrets.compare_digest(self.headers.get("x-bridge-token", ""), self.server.cfg.token):
+                return self.error(401, "authentication_error", "wrong pairing code")
+            self.send_json(200, account_info(self.server.cfg.claude))
         else:
             self.error(404, "not_found_error", "not found")
 

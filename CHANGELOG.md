@@ -1,5 +1,19 @@
 # Changelog
 
+## 01.23 (2026-11-14)
+
+- Recents in the sidebar: press D-pad Left, pick a chat with Up/Down and press Cross to open it and carry on. In bridge mode it continues the same Claude Code session.
+- Chats are now also saved as .json next to the .txt, so they can be reopened. Older .txt chats open too.
+- Profile at the bottom left: Claude account name (bridge mode) or PS4 user name (API key mode).
+- Log out (asks first): removes the API key and bridge pairing from claude.ini, signs out phones, and opens the phone setup.
+- Phone page: menu with the chat list, profile and Log out.
+- claude-bridge.py: new /v1/whoami for the profile name. Update the bridge on your PC to see the account name.
+- Fix: Reload settings and phone setup no longer overwrite the previous chat file.
+
+## 01.22 (2026-11-14)
+
+- Fix: the PS4 start screen stayed on top of the app. The app now hides it once it starts.
+
 ## 01.21 (2026-11-14)
 
 - Fix: 01.10 and 01.20 could stop on the start screen. The app linked system libraries (BGFT, AppInstUtil, Random) that apps do not get at start; they are now loaded only when a tool needs them.

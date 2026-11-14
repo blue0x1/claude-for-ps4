@@ -53,6 +53,9 @@ typedef struct {
     // Tool confirmation, asked by the network thread, answered by the UI.
     volatile int    confirm;
     char            confirm_text[1024];
+    char            confirm_title[64];   // "" = "Allow this action?"
+    char            confirm_yes[24];     // "" = "Allow"
+    char            confirm_no[24];      // "" = "Deny"
 } Chat;
 
 void chat_init(Chat *c);

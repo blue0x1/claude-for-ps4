@@ -2,5 +2,5 @@
 #pragma once
 // Set by the Makefile from VERSION (same as param.sfo APP_VER).
 #ifndef APP_VERSION
-#define APP_VERSION "01.22"
+#define APP_VERSION "01.23"
 #endif

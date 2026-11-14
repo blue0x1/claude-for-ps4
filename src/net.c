@@ -395,3 +395,53 @@ void net_cancel(Chat *chat)
     if (req > 0)
         sceHttpAbortRequest(req);
 }
+
+// ---- PC bridge account name ----------------------------------------------
+
+int net_whoami(const Config *cfg, char *name, size_t name_len, char *email, size_t email_len)
+{
+    name[0] = email[0] = 0;
+    if (!cfg->bridge || g_http_ctx < 0)
+        return -1;
+    char url[200];
+    snprintf(url, sizeof(url), "%s/v1/whoami", cfg->bridge_url);
+    int tpl = -1, conn = -1, req = -1, status = 0, r = -1;
+    StrBuf body;
+    sb_init(&body);
+    tpl = sceHttpCreateTemplate(g_http_ctx, USER_AGENT, ORBIS_HTTP_VERSION_1_1, 1);
+    if (tpl < 0)
+        goto out;
+    sceHttpSetConnectTimeOut(tpl, 10 * 1000 * 1000);
+    sceHttpSetRecvTimeOut(tpl, 20 * 1000 * 1000);
+    if ((conn = sceHttpCreateConnectionWithURL(tpl, url, true)) < 0)
+        goto out;
+    if ((req = sceHttpCreateRequestWithURL(conn, ORBIS_METHOD_GET, url, 0)) < 0)
+        goto out;
+    sceHttpAddRequestHeader(req, "x-bridge-token", cfg->bridge_token, HTTP_HEADER_OVERWRITE);
+    if (sceHttpSendRequest(req, NULL, 0) < 0)
+        goto out;
+    sceHttpGetStatusCode(req, &status);
+    if (status != 200)
+        goto out;
+    char buf[1024];
+    int n;
+    while (body.len < 8192 && (n = sceHttpReadData(req, buf, sizeof(buf))) > 0)
+        sb_appendn(&body, buf, (size_t)n);
+    JVal *v = body.data ? json_parse(body.data) : NULL;
+    const char *nm = v ? json_get_str(v, "name") : NULL, *em = v ? json_get_str(v, "email") : NULL;
+    if (nm)
+        snprintf(name, name_len, "%s", nm);
+    if (em)
+        snprintf(email, email_len, "%s", em);
+    json_free(v);
+    r = (name[0] || email[0]) ? 0 : -1;
+out:
+    if (req >= 0)
+        sceHttpDeleteRequest(req);
+    if (conn >= 0)
+        sceHttpDeleteConnection(conn);
+    if (tpl >= 0)
+        sceHttpDeleteTemplate(tpl);
+    sb_free(&body);
+    return r;
+}
