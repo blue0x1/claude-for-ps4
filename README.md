@@ -1,6 +1,10 @@
 <!-- Copyright (C) 2026 Chokri Hammedi (blue0x1) <https://github.com/blue0x1>. All rights reserved. -->
 # Claude for PS4
 
+<p align="center">
+  <img src="sce_sys/icon0.png" width="120" alt="Claude for PS4 icon"/>
+</p>
+
 > **Unofficial.** This is an unofficial Claude app for the PS4, made by Chokri Hammedi (blue0x1). It is not made, endorsed or supported by Anthropic or Sony Interactive Entertainment. Claude is a trademark of Anthropic; PlayStation and PS4 are trademarks of Sony Interactive Entertainment.
 
 A native PS4 homebrew app (jailbroken console, GoldHEN) for chatting with Claude through the Anthropic API. Claude can also use console tools: it can read system info, browse and manage files, install and uninstall .pkg files, list and launch apps, set the fan threshold, look at your screenshots, and send payloads to GoldHEN BinLoader. Anything that writes, installs, deletes, launches or runs shows a confirm box first (on the TV, or on your phone if you use the phone remote). Nothing happens unless you allow it.
