@@ -1,10 +1,18 @@
 # Claude for PS4 settings.
-# Copy this file to the root of a USB drive as claude.ini, or to
-# /data/claude/claude.ini on the PS4 (for example over GoldHEN FTP).
-# The app reads the first one it finds: /mnt/usb0, /mnt/usb1, /data/claude, /data.
+# Easiest: press Options in the app and fill in the page on your phone.
+# Or copy this file to /data/claude/claude.ini on the PS4 (GoldHEN FTP), or to
+# the root of a USB drive as claude.ini. The app reads the first one it finds:
+# /data/claude, /mnt/usb0, /mnt/usb1, /data.
 
-# Your Anthropic API key (console.anthropic.com). Required.
+# api = use an API key, bridge = use your Claude account through claude-bridge.py on a PC
+mode=api
+
+# Your Anthropic API key (console.anthropic.com). Needed for mode=api.
 api_key=sk-ant-REPLACE-ME
+
+# For mode=bridge: the address and pairing code that claude-bridge.py prints.
+bridge_url=
+bridge_token=
 
 # Model. Default: claude-opus-5-5
 model=claude-opus-5-5

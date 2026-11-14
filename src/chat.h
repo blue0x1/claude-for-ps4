@@ -41,6 +41,8 @@ typedef struct {
     volatile int    req_id;        // sceHttp request id, for abort
     volatile int    dirty;         // UI should redraw
 
+    char            conv_id[40];   // new id per chat (PC bridge session key)
+
     // Tool confirmation, asked by the network thread, answered by the UI.
     volatile int    confirm;
     char            confirm_text[1024];

@@ -21,6 +21,9 @@
 #include "net.h"
 #include "plat.h"
 #include "ui.h"
+#include "setup.h"
+
+#include <orbis/NetCtl.h>
 
 
 
@@ -30,6 +33,7 @@ Config g_cfg;
 int  g_cfg_ok;
 int  g_scroll;          // pixels scrolled up from the bottom
 int  g_max_scroll;
+Setup g_setup;
 static int  g_user_id = -1;
 static char g_history_path[256];
 
@@ -94,6 +98,19 @@ static void load_config(void)
     }
 }
 
+static void open_phone_setup(void)
+{
+    OrbisNetCtlInfo info;
+    memset(&info, 0, sizeof(info));
+    if (sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_IP_ADDRESS, &info) < 0 || !info.ip_address[0]) {
+        chat_add(&g_chat, ROLE_NOTICE, "Phone setup needs the PS4 to be connected to your network.");
+        return;
+    }
+    if (setup_start(&g_setup, &g_cfg, info.ip_address) < 0)
+        chat_add(&g_chat, ROLE_NOTICE, "Could not start the phone setup page (port 8765 busy?).");
+    g_chat.dirty = 1;
+}
+
 static void fatal_screen(Canvas *c, SDL_Window *win, const char *msg)
 {
     for (;;) {
@@ -143,7 +160,10 @@ int main(void)
     scePadInit();
     int pad = scePadOpen(g_user_id, 0, 0, NULL);
 
+    sceNetCtlInit();
     load_config();
+    if (!g_cfg_ok)
+        open_phone_setup();
 
     unsigned prev_buttons = 0;
     int was_busy = 0, frame = 0;
@@ -171,7 +191,12 @@ int main(void)
             unsigned b = pd.buttons, pressed = b & ~prev_buttons;
             prev_buttons = b;
 
-            if (g_chat.confirm == CONFIRM_PENDING) {
+            if (g_setup.active && g_chat.confirm != CONFIRM_PENDING) {
+                if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
+                    setup_stop(&g_setup);
+                    g_chat.dirty = 1;
+                }
+            } else if (g_chat.confirm == CONFIRM_PENDING) {
                 if (pressed & ORBIS_PAD_BUTTON_CROSS)
                     g_chat.confirm = CONFIRM_YES;
                 else if (pressed & ORBIS_PAD_BUTTON_CIRCLE)
@@ -182,6 +207,8 @@ int main(void)
             } else {
                 if ((pressed & ORBIS_PAD_BUTTON_CROSS) && g_cfg_ok)
                     ime_open(g_user_id, "Message Claude", "");
+                if (pressed & ORBIS_PAD_BUTTON_OPTIONS)
+                    open_phone_setup();
                 if (pressed & ORBIS_PAD_BUTTON_SQUARE) {
                     chat_clear(&g_chat);
                     g_history_path[0] = 0;
@@ -217,6 +244,20 @@ int main(void)
             if (g_scroll != old)
                 g_chat.dirty = 1;
         }
+
+        // Settings saved from the phone
+        if (g_setup.saved) {
+            g_setup.saved = 0;
+            setup_stop(&g_setup);
+            chat_clear(&g_chat);
+            load_config();
+            if (g_cfg_ok)
+                chat_add(&g_chat, ROLE_NOTICE, g_cfg.bridge
+                             ? "Saved from your phone. Using your PC bridge (Claude account). Press Cross to type."
+                             : "Saved from your phone. Using your API key. Press Cross to type.");
+        }
+        if (g_setup.active && frame % 30 == 0)
+            g_chat.dirty = 1;  // the PIN can change after wrong tries
 
         if (was_busy && !g_chat.busy)
             save_history();

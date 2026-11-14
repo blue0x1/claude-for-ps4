@@ -3,6 +3,7 @@
 #include "chat.h"
 #include "config.h"
 #include "font.h"
+#include "setup.h"
 
 #define SCREEN_W 1920
 #define SCREEN_H 1080
@@ -28,6 +29,7 @@ extern Chat   g_chat;
 extern Config g_cfg;
 extern int    g_cfg_ok;
 extern int    g_scroll, g_max_scroll;
+extern Setup  g_setup;   // phone setup screen while g_setup.active
 
 void render(Canvas *c, int frame);
 void draw_center(Canvas *c, Font *f, int y, const char *s, uint32_t color);

@@ -5,11 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 const char *const CONFIG_PATHS[] = {
+    "/data/claude/claude.ini",   // written by phone setup
     "/mnt/usb0/claude.ini",
     "/mnt/usb1/claude.ini",
-    "/data/claude/claude.ini",
     "/data/claude.ini",
     NULL,
 };
@@ -83,6 +84,12 @@ void config_parse(Config *cfg, const char *text)
             unescape_newlines(cfg->system);
         } else if (!strcmp(key, "tls_verify"))
             cfg->tls_verify = atoi(val) != 0;
+        else if (!strcmp(key, "mode"))
+            cfg->bridge = !strcmp(val, "bridge");
+        else if (!strcmp(key, "bridge_url"))
+            snprintf(cfg->bridge_url, sizeof(cfg->bridge_url), "%s", val);
+        else if (!strcmp(key, "bridge_token"))
+            snprintf(cfg->bridge_token, sizeof(cfg->bridge_token), "%s", val);
         else if (!strcmp(key, "fallbacks"))
             cfg->fallbacks = !strcmp(val, "auto") ? -1 : (atoi(val) != 0);
     }
@@ -105,15 +112,19 @@ int config_load(Config *cfg, char *err, int errlen)
         config_parse(cfg, buf);
         free(buf);
         snprintf(cfg->loaded_from, sizeof(cfg->loaded_from), "%s", CONFIG_PATHS[i]);
-        if (!cfg->api_key[0]) {
+        if (cfg->bridge && (!cfg->bridge_url[0] || !cfg->bridge_token[0])) {
+            snprintf(err, (size_t)errlen, "%s: mode=bridge needs bridge_url and bridge_token.", CONFIG_PATHS[i]);
+            return 0;
+        }
+        if (!cfg->bridge && !cfg->api_key[0]) {
             snprintf(err, (size_t)errlen, "%s has no api_key line.", CONFIG_PATHS[i]);
             return 0;
         }
         return 1;
     }
     snprintf(err, (size_t)errlen,
-             "No claude.ini found. Put one on a USB drive (root folder) or at "
-             "/data/claude/claude.ini with a line like: api_key=sk-ant-...");
+             "Not set up yet. Press Options to set up from your phone, or put a "
+             "claude.ini on a USB drive (root folder).");
     return 0;
 }
 
@@ -130,4 +141,47 @@ int config_use_fallbacks(const Config *cfg)
         if (!strcmp(cfg->model, ok[i]))
             return 1;
     return 0;
+}
+
+static void escape_newlines(const char *in, StrBuf *out)
+{
+    for (; *in; in++) {
+        if (*in == '\n')
+            sb_append(out, "\\n");
+        else if (*in != '\r')
+            sb_appendc(out, *in);
+    }
+}
+
+void config_write(const Config *cfg, StrBuf *out)
+{
+    sb_append(out, "# Claude for PS4 settings (written by phone setup)\n");
+    sb_appendf(out, "mode=%s\n", cfg->bridge ? "bridge" : "api");
+    sb_appendf(out, "api_key=%s\n", cfg->api_key);
+    sb_appendf(out, "bridge_url=%s\n", cfg->bridge_url);
+    sb_appendf(out, "bridge_token=%s\n", cfg->bridge_token);
+    sb_appendf(out, "model=%s\n", cfg->model);
+    sb_appendf(out, "max_tokens=%d\n", cfg->max_tokens);
+    sb_appendf(out, "effort=%s\n", cfg->effort);
+    sb_appendf(out, "tls_verify=%d\n", cfg->tls_verify);
+    sb_appendf(out, "fallbacks=%s\n", cfg->fallbacks < 0 ? "auto" : cfg->fallbacks ? "1" : "0");
+    if (strcmp(cfg->system, CONFIG_DEFAULT_SYSTEM)) {
+        sb_append(out, "system=");
+        escape_newlines(cfg->system, out);
+        sb_append(out, "\n");
+    }
+}
+
+int config_save(const Config *cfg)
+{
+    StrBuf sb;
+    sb_init(&sb);
+    config_write(cfg, &sb);
+    mkdir(CONFIG_SAVE_DIR, 0777);
+    FILE *f = fopen(CONFIG_SAVE_PATH, "wb");
+    int ok = f && fwrite(sb.data, 1, sb.len, f) == sb.len;
+    if (f)
+        fclose(f);
+    sb_free(&sb);
+    return ok ? 0 : -1;
 }

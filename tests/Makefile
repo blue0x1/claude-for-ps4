@@ -10,9 +10,9 @@ COMMON := $(SRC)/chat.c $(SRC)/config.c $(SRC)/font.c $(SRC)/json.c $(SRC)/layou
 all: test preview
 
 test:
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o test_host test_host.c $(COMMON) $(SRC)/stream.c $(SRC)/tools.c -lpthread -lm
-	cd .. && ASAN_OPTIONS=detect_leaks=0 tests/test_host
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o test_host test_host.c $(COMMON) $(SRC)/stream.c $(SRC)/tools.c $(SRC)/setup.c -DCONFIG_SAVE_DIR='"/tmp/claude-ps4-test"' -lpthread -lm
+	mkdir -p /tmp/claude-ps4-test && cd .. && ASAN_OPTIONS=detect_leaks=0 tests/test_host
 
 preview:
-	$(CC) $(CFLAGS) -w -o preview preview.c $(COMMON) $(SRC)/ui.c -lpthread -lm
+	$(CC) $(CFLAGS) -w -o preview preview.c $(COMMON) $(SRC)/ui.c $(SRC)/setup.c $(SRC)/qrcodegen.c -lpthread -lm
 	cd .. && tests/preview tests

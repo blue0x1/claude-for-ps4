@@ -14,6 +14,7 @@
 #include "../src/layout.h"
 #include "../src/stream.h"
 #include "../src/tools.h"
+#include "../src/setup.h"
 
 static int fails;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
@@ -168,8 +169,76 @@ static void test_tools(void)
     sb_free(&out);
 }
 
+static void test_bridge_stream(void)
+{
+    static Chat chat;
+    chat_init(&chat);
+    FILE *f = fopen("tests/fixtures/bridge_stream.txt", "rb");
+    char buf[8192];
+    size_t n = fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    Stream st;
+    stream_init(&st, &chat);
+    stream_feed(&st, buf, n);
+    CHECK(st.done && !strcmp(st.stop_reason, "end_turn"));
+    CHECK(chat.count == 1 && !strcmp(chat.msgs[0].text.data, "ok"));
+    stream_free(&st);
+}
+
+static void test_setup(void)
+{
+    static Setup s;
+    pthread_mutex_init(&s.lock, NULL);
+    config_defaults(&s.cfg);
+    setup_new_pin(&s);
+    CHECK(strlen(s.pin) == 6);
+    StrBuf r;
+    sb_init(&r);
+    setup_handle_request(&s, "GET / HTTP/1.1\r\nHost: x\r\n\r\n", 30, &r);
+    CHECK(strstr(r.data, "200 OK") && strstr(r.data, "name=pin"));
+    sb_free(&r);
+    // Wrong PIN
+    setup_handle_request(&s, "POST /save HTTP/1.1\r\n\r\npin=000000x&mode=api&api_key=sk-ant-abc", 60, &r);
+    CHECK(strstr(r.data, "Wrong PIN"));
+    sb_free(&r);
+    // Good PIN, API key with an injected newline that must be stripped
+    char req[512];
+    snprintf(req, sizeof(req), "POST /save HTTP/1.1\r\n\r\npin=%s&mode=api&api_key=+sk-ant-abc%%0Amode%%3Dbridge+&model=claude-opus-5-5&effort=low", s.pin);
+    int saved = setup_handle_request(&s, req, strlen(req), &r);
+    CHECK(saved && strstr(r.data, "Saved"));
+    sb_free(&r);
+    Config c;
+    char err[300];
+    CHECK(config_load(&c, err, sizeof(err)) || 1);
+    FILE *f = fopen(CONFIG_SAVE_PATH, "rb");
+    CHECK(f != NULL);
+    if (f) {
+        char text[2048] = {0};
+        fread(text, 1, sizeof(text) - 1, f);
+        fclose(f);
+        printf("saved ini:\n%s", text);
+        Config p;
+        config_defaults(&p);
+        config_parse(&p, text);
+        CHECK(!strcmp(p.api_key, "sk-ant-abcmode=bridge") && !p.bridge && !strcmp(p.effort, "low"));
+    }
+    // PIN is single use
+    saved = setup_handle_request(&s, req, strlen(req), &r);
+    CHECK(!saved);
+    sb_free(&r);
+    // Bridge mode
+    setup_new_pin(&s);
+    snprintf(req, sizeof(req), "POST /save HTTP/1.1\r\n\r\npin=%s&mode=bridge&bridge_url=http%%3A%%2F%%2F192.168.1.50%%3A8787%%2F&bridge_token=dc6c61e6", s.pin);
+    CHECK(setup_handle_request(&s, req, strlen(req), &r));
+    CHECK(s.cfg.bridge && !strcmp(s.cfg.bridge_url, "http://192.168.1.50:8787") && !strcmp(s.cfg.bridge_token, "dc6c61e6"));
+    CHECK(!strcmp(s.cfg.api_key, "sk-ant-abcmode=bridge"));  // kept
+    sb_free(&r);
+}
+
 int main(void)
 {
+    test_bridge_stream();
+    test_setup();
     test_stream();
     test_request();
     test_wrap();

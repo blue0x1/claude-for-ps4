@@ -12,6 +12,7 @@ Font g_body, g_small, g_title;
 Chat g_chat;
 Config g_cfg;
 int g_cfg_ok = 1, g_scroll, g_max_scroll;
+Setup g_setup;
 
 static void save(Canvas *c, const char *path)
 {
@@ -65,6 +66,17 @@ int main(int argc, char **argv)
              "Copy folder\n/user/home/1a2b3c4d/savedata\nto\n/mnt/usb0/backup/savedata ?");
     render(&c, 0);
     snprintf(path, sizeof(path), "%s/preview-confirm.png", outdir);
+    save(&c, path);
+    g_chat.confirm = CONFIRM_NONE;
+    g_chat.busy = 0;
+    chat_clear(&g_chat);
+    g_cfg_ok = 0;
+    chat_add(&g_chat, ROLE_NOTICE, "Not set up yet. Press Options to set up from your phone, or put a claude.ini on a USB drive (root folder).");
+    g_setup.active = 1;
+    snprintf(g_setup.url, sizeof(g_setup.url), "http://192.168.1.100:8765/");
+    snprintf(g_setup.pin, sizeof(g_setup.pin), "482913");
+    render(&c, 0);
+    snprintf(path, sizeof(path), "%s/preview-setup.png", outdir);
     save(&c, path);
     printf("ok\n");
     return 0;

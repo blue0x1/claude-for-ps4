@@ -4,12 +4,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
+
+static void new_conv_id(Chat *c)
+{
+    static unsigned n;
+    snprintf(c->conv_id, sizeof(c->conv_id), "ps4-%lx-%u", (unsigned long)time(NULL), ++n);
+}
 
 void chat_init(Chat *c)
 {
     memset(c, 0, sizeof(*c));
     pthread_mutex_init(&c->lock, NULL);
+    new_conv_id(c);
 }
 
 void chat_clear(Chat *c)
@@ -23,6 +31,7 @@ void chat_clear(Chat *c)
     c->count = 0;
     pthread_mutex_unlock(&c->lock);
     chat_api_truncate(c, 0);
+    new_conv_id(c);
     c->dirty = 1;
 }
 

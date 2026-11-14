@@ -86,7 +86,15 @@ static int stream_call(Job *job, Stream *st, char **message_json)
 
     StrBuf body;
     sb_init(&body);
-    chat_build_request(chat, &job->cfg, TOOLS_JSON, &body);
+    int bridge = job->cfg.bridge;
+    char url[200];
+    if (bridge)
+        snprintf(url, sizeof(url), "%s/v1/messages", job->cfg.bridge_url);
+    else
+        snprintf(url, sizeof(url), "%s", API_URL);
+    // Console tools run on the PS4 and need the API directly; the bridge
+    // mode is chat only.
+    chat_build_request(chat, &job->cfg, bridge ? NULL : TOOLS_JSON, &body);
 
     tpl = sceHttpCreateTemplate(g_http_ctx, USER_AGENT, ORBIS_HTTP_VERSION_1_1, 1);
     if (tpl < 0) {
@@ -100,12 +108,12 @@ static int stream_call(Job *job, Stream *st, char **message_json)
                                    HTTPS_FLAG_KNOWN_CA_CHECK);
         sceHttpsSetSslCallback(tpl, accept_any_cert, NULL);
     }
-    conn = sceHttpCreateConnectionWithURL(tpl, API_URL, true);
+    conn = sceHttpCreateConnectionWithURL(tpl, url, true);
     if (conn < 0) {
         notice(chat, "Network error: could not create connection (0x%08X).", (unsigned)conn);
         goto out;
     }
-    req = sceHttpCreateRequestWithURL(conn, ORBIS_METHOD_POST, API_URL, body.len);
+    req = sceHttpCreateRequestWithURL(conn, ORBIS_METHOD_POST, url, body.len);
     if (req < 0) {
         notice(chat, "Network error: could not create request (0x%08X).", (unsigned)req);
         goto out;
@@ -113,14 +121,22 @@ static int stream_call(Job *job, Stream *st, char **message_json)
     chat->req_id = req;
     sceHttpAddRequestHeader(req, "content-type", "application/json", HTTP_HEADER_OVERWRITE);
     sceHttpAddRequestHeader(req, "accept", "text/event-stream", HTTP_HEADER_OVERWRITE);
-    sceHttpAddRequestHeader(req, "x-api-key", job->cfg.api_key, HTTP_HEADER_OVERWRITE);
-    sceHttpAddRequestHeader(req, "anthropic-version", API_VERSION, HTTP_HEADER_OVERWRITE);
-    if (config_use_fallbacks(&job->cfg))
+    if (bridge) {
+        sceHttpAddRequestHeader(req, "x-bridge-token", job->cfg.bridge_token, HTTP_HEADER_OVERWRITE);
+        sceHttpAddRequestHeader(req, "x-conversation-id", chat->conv_id, HTTP_HEADER_OVERWRITE);
+    } else {
+        sceHttpAddRequestHeader(req, "x-api-key", job->cfg.api_key, HTTP_HEADER_OVERWRITE);
+        sceHttpAddRequestHeader(req, "anthropic-version", API_VERSION, HTTP_HEADER_OVERWRITE);
+    }
+    if (!bridge && config_use_fallbacks(&job->cfg))
         sceHttpAddRequestHeader(req, "anthropic-beta", API_BETA_FALLBACK, HTTP_HEADER_OVERWRITE);
 
     ret = sceHttpSendRequest(req, body.data, body.len);
     if (ret < 0) {
-        if (!chat->cancel)
+        if (!chat->cancel && bridge)
+            notice(chat, "Could not reach the PC bridge (0x%08X). Is claude-bridge.py running, "
+                         "and is bridge_url right?", (unsigned)ret);
+        else if (!chat->cancel)
             notice(chat, job->cfg.tls_verify
                        ? "Could not reach api.anthropic.com (0x%08X). Check the network and the PS4 "
                          "date and time. If it is a certificate error, see tls_verify in the README."
