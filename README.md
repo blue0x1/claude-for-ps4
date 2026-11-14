@@ -7,7 +7,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-01.26-orange?style=flat-square" alt="Version"/>
-  <img src="https://img.shields.io/badge/PlayStation%204-GoldHEN-003087?style=flat-square&logo=playstation&logoColor=white" alt="Platform"/>
+  <img src="https://img.shields.io/badge/platform-PS4-003791?logo=playstation&logoColor=white" alt="Platform: PS4">
   <img src="https://img.shields.io/badge/firmware-5.05%2B-lightgrey?style=flat-square" alt="Firmware"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"/>
 </p>
